@@ -1,0 +1,44 @@
+{
+    "name": "somniaID",
+    "version": "1.0.0",
+    "description": "Real-time reputation NFTs on Somnia Network",
+    "scripts": {
+        "setup": "npm run install:all && npm run setup:env",
+        "install:all": "cd frontend && npm install && cd ../backend && npm install && cd ../contracts && npm install && cd ..",
+        "setup:env": "cp contracts/.env.example contracts/.env && cp backend/.env.example backend/.env && cp frontend/.env.example frontend/.env.local",
+        "dev": "concurrently \"npm run dev:frontend\" \"npm run dev:backend\"",
+        "dev:frontend": "cd frontend && npm run dev",
+        "dev:backend": "cd backend && npm run dev",
+        "build": "npm run build:frontend && npm run build:backend && npm run build:contracts",
+        "build:frontend": "cd frontend && npm run build",
+        "build:backend": "cd backend && npm run build",
+        "build:contracts": "cd contracts && npx hardhat compile",
+        "deploy": "cd contracts && npx hardhat run scripts/deploy.js --network somnia",
+        "test": "cd contracts && npx hardhat test",
+        "verify": "cd contracts && npx hardhat run scripts/verify.js --network somnia",
+        "start": "concurrently \"npm run start:frontend\" \"npm run start:backend\"",
+        "start:frontend": "cd frontend && npm start",
+        "start:backend": "cd backend && npm start",
+        "docker:up": "docker-compose up -d",
+        "docker:down": "docker-compose down",
+        "clean": "rm -rf frontend/.next frontend/node_modules backend/dist backend/node_modules contracts/artifacts contracts/cache contracts/node_modules node_modules"
+    },
+    "keywords": [
+        "blockchain",
+        "nft",
+        "reputation",
+        "somnia",
+        "web3",
+        "defi",
+        "hackathon"
+    ],
+    "author": "SomniaID Team",
+    "license": "MIT",
+    "devDependencies": {
+        "concurrently": "^8.2.0"
+    },
+    "engines": {
+        "node": ">=18.0.0",
+        "npm": ">=8.0.0"
+    }
+}

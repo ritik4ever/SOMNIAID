@@ -1,0 +1,58 @@
+version: '3.8'
+services:
+  mongodb:
+    image: mongo:latest
+    container_name: somniaID-mongo
+    restart: unless-stopped
+    ports:
+      - "27017:27017"
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: admin
+      MONGO_INITDB_ROOT_PASSWORD: password123
+      MONGO_INITDB_DATABASE: somniaID
+    volumes:
+      - mongodb_data:/data/db
+    networks:
+      - somniaID-network
+
+  backend:
+    build: ./backend
+    container_name: somniaID-backend
+    restart: unless-stopped
+    ports:
+      - "5000:5000"
+    environment:
+      - NODE_ENV=development
+      - MONGODB_URI=mongodb://admin:password123@mongodb:27017/somniaID?authSource=admin
+      - PORT=5000
+    depends_on:
+      - mongodb
+    networks:
+      - somniaID-network
+    volumes:
+      - ./backend:/app
+      - /app/node_modules
+
+  frontend:
+    build: ./frontend
+    container_name: somniaID-frontend
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      - NEXT_PUBLIC_API_URL=http://localhost:5000
+    depends_on:
+      - backend
+    networks:
+      - somniaID-network
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+
+volumes:
+  mongodb_data:
+
+
+networks:
+  somniaID-network:
+    driver: bridge
