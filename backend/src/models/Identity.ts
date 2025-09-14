@@ -4,16 +4,21 @@ export interface IAchievement {
     id: string;
     title: string;
     description: string;
-    category: 'hackathon' | 'certification' | 'project' | 'education' | 'work' | 'community';
+    category: 'hackathon' | 'certification' | 'project' | 'education' | 'work' | 'community' | 'milestone' | 'social' | 'skill' | 'time' | 'special' | 'external';
     points: number;
-    valueImpact: number; // How much this affects NFT price
+    valueImpact: number;
     dateAchieved: Date;
     verified: boolean;
     proof?: {
         type: 'url' | 'ipfs' | 'document';
         value: string;
-    };
+    } | string;
     verifier?: string;
+    verificationHash?: string;
+    txHash?: string;
+    rarity?: 'common' | 'uncommon' | 'rare' | 'epic' | 'legendary';
+    badge?: string;
+    verificationSource?: string;
 }
 
 export interface IGoal {
@@ -22,8 +27,8 @@ export interface IGoal {
     description: string;
     category: string;
     targetDate: Date;
-    progress: number; // 0-100
-    valueImpact: number; // Potential price impact if achieved
+    progress: number;
+    valueImpact: number;
     milestones: Array<{
         title: string;
         completed: boolean;
@@ -36,27 +41,23 @@ export interface IIdentity extends Document {
     username: string;
     ownerAddress: string;
 
-    // Basic Profile
     primarySkill: string;
     experience: 'beginner' | 'intermediate' | 'advanced' | 'expert';
     location?: string;
 
-    // Reputation System
     reputationScore: number;
     skillLevel: number;
     achievementCount: number;
     isVerified: boolean;
 
-    // Dynamic Pricing
-    nftBasePrice: number; // Starting price in STT
-    currentPrice: number; // Current market price
+    nftBasePrice: number;
+    currentPrice: number;
     priceHistory: Array<{
         price: number;
         date: Date;
-        trigger: string; // What caused price change
+        trigger: string;
     }>;
 
-    // Enhanced Profile
     profile: {
         bio: string;
         avatar?: string;
@@ -87,36 +88,43 @@ export interface IIdentity extends Document {
         }>;
     };
 
-    // Analytics
     profileViews: number;
-    followers: string[]; // Array of wallet addresses
+    followers: string[];
     following: string[];
 
-    // Metadata
-    txHash: string;
+    txHash?: string;
     lastUpdate: number;
+    lastMetadataUpdate?: number; // Add this field
+    lastKnownReputation?: number; // Add this field
     createdAt: Date;
     updatedAt: Date;
 }
 
+// Schema definitions remain the same but with extended achievement schema
 const AchievementSchema = new Schema({
     id: { type: String, required: true },
     title: { type: String, required: true },
     description: { type: String, required: true },
     category: {
         type: String,
-        enum: ['hackathon', 'certification', 'project', 'education', 'work', 'community'],
+        enum: ['hackathon', 'certification', 'project', 'education', 'work', 'community', 'milestone', 'social', 'skill', 'time', 'special', 'external'],
         required: true
     },
     points: { type: Number, required: true },
     valueImpact: { type: Number, default: 0 },
     dateAchieved: { type: Date, required: true },
     verified: { type: Boolean, default: false },
-    proof: {
-        type: { type: String, enum: ['url', 'ipfs', 'document'] },
-        value: { type: String }
+    proof: { type: Schema.Types.Mixed }, // Allow both string and object
+    verifier: { type: String },
+    verificationHash: { type: String },
+    txHash: { type: String },
+    rarity: {
+        type: String,
+        enum: ['common', 'uncommon', 'rare', 'epic', 'legendary'],
+        default: 'common'
     },
-    verifier: { type: String }
+    badge: { type: String },
+    verificationSource: { type: String }
 });
 
 const GoalSchema = new Schema({
@@ -139,7 +147,6 @@ const IdentitySchema: Schema = new Schema({
     username: { type: String, required: true, unique: true },
     ownerAddress: { type: String, required: true, unique: true },
 
-    // Basic Profile
     primarySkill: { type: String, required: true },
     experience: {
         type: String,
@@ -148,14 +155,12 @@ const IdentitySchema: Schema = new Schema({
     },
     location: { type: String },
 
-    // Reputation System
     reputationScore: { type: Number, default: 100 },
     skillLevel: { type: Number, default: 1 },
     achievementCount: { type: Number, default: 0 },
     isVerified: { type: Boolean, default: false },
 
-    // Dynamic Pricing
-    nftBasePrice: { type: Number, default: 10 }, // 10 STT base price
+    nftBasePrice: { type: Number, default: 10 },
     currentPrice: { type: Number, default: 10 },
     priceHistory: [{
         price: { type: Number, required: true },
@@ -163,7 +168,6 @@ const IdentitySchema: Schema = new Schema({
         trigger: { type: String, required: true }
     }],
 
-    // Enhanced Profile
     profile: {
         bio: { type: String, default: '' },
         avatar: { type: String },
@@ -194,36 +198,33 @@ const IdentitySchema: Schema = new Schema({
         }]
     },
 
-    // Analytics
     profileViews: { type: Number, default: 0 },
-    followers: [{ type: String }], // Wallet addresses
+    followers: [{ type: String }],
     following: [{ type: String }],
 
-    // Metadata
     txHash: { type: String },
-    lastUpdate: { type: Number, default: Date.now }
+    lastUpdate: { type: Number, default: Date.now },
+    lastMetadataUpdate: { type: Number, default: 0 },
+    lastKnownReputation: { type: Number, default: 0 }
 }, {
     timestamps: true
 });
 
-// Price calculation method
+// Price calculation method with proper typing
 IdentitySchema.methods.calculatePrice = function () {
     let price = this.nftBasePrice;
 
-    // Add value based on achievements
     this.profile.achievements.forEach((achievement: IAchievement) => {
         if (achievement.verified) {
             price += achievement.valueImpact;
         }
     });
 
-    // Add potential value based on goals
     this.profile.goals.forEach((goal: IGoal) => {
         const completionBonus = (goal.progress / 100) * goal.valueImpact;
         price += completionBonus;
     });
 
-    // Experience multiplier - FIXED with proper typing
     const experienceMultipliers: Record<string, number> = {
         beginner: 1,
         intermediate: 1.2,
@@ -231,16 +232,13 @@ IdentitySchema.methods.calculatePrice = function () {
         expert: 2
     };
 
-    // FIXED: Add type checking
     const multiplier = experienceMultipliers[this.experience] || 1;
     price *= multiplier;
 
-    // Verification bonus
     if (this.isVerified) {
         price *= 1.3;
     }
 
-    // Network effect (followers)
     const followerBonus = Math.min(this.followers.length * 0.1, 10);
     price += followerBonus;
 

@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { ConnectButton } from '@rainbow-me/rainbowkit'
+import { ConnectKitButton } from 'connectkit'
 import { useAccount } from 'wagmi'
 import { Zap, Menu, X } from 'lucide-react'
 
@@ -75,14 +75,7 @@ export function Navbar() {
                             </div>
                         )}
 
-                        <ConnectButton
-                            chainStatus="none"
-                            showBalance={false}
-                            accountStatus={{
-                                smallScreen: 'avatar',
-                                largeScreen: 'full',
-                            }}
-                        />
+                        <ConnectKitButton />
 
                         {/* Mobile menu button */}
                         <button

@@ -1,56 +1,174 @@
 version: '3.8'
+
 services:
+  # MongoDB Database
   mongodb:
-    image: mongo:latest
+    image: mongo:7.0
     container_name: somniaID-mongo
     restart: unless-stopped
-    ports:
-      - "27017:27017"
     environment:
       MONGO_INITDB_ROOT_USERNAME: admin
       MONGO_INITDB_ROOT_PASSWORD: password123
       MONGO_INITDB_DATABASE: somniaID
+    ports:
+      - "27017:27017"
     volumes:
       - mongodb_data:/data/db
+      - ./backend/scripts/mongo-init.js:/docker-entrypoint-initdb.d/mongo-init.js:ro
     networks:
       - somniaID-network
 
-  backend:
-    build: ./backend
-    container_name: somniaID-backend
+  # Redis for caching and queues
+  redis:
+    image: redis:7.2-alpine
+    container_name: somniaID-redis
     restart: unless-stopped
     ports:
-      - "5000:5000"
-    environment:
-      - NODE_ENV=development
-      - MONGODB_URI=mongodb://admin:password123@mongodb:27017/somniaID?authSource=admin
-      - PORT=5000
-    depends_on:
-      - mongodb
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
     networks:
       - somniaID-network
+
+  # Backend API
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: somniaID-backend
+    restart: unless-stopped
+    environment:
+      - NODE_ENV=production
+      - PORT=5000
+      - MONGODB_URI=mongodb://admin:password123@mongodb:27017/somniaID?authSource=admin
+      - REDIS_URL=redis://redis:6379
+      - JWT_SECRET=your-super-secret-jwt-key-make-it-very-long-and-random-in-production
+      - CONTRACT_ADDRESS=0xbeAe9159aFC070071328648dDc85d873AD5070a0
+      - RPC_URL=https://dream-rpc.somnia.network/
+      - FRONTEND_URL=http://localhost:3000
+    ports:
+      - "5000:5000"
+    depends_on:
+      - mongodb
+      - redis
     volumes:
       - ./backend:/app
       - /app/node_modules
-
-  frontend:
-    build: ./frontend
-    container_name: somniaID-frontend
-    restart: unless-stopped
-    ports:
-      - "3000:3000"
-    environment:
-      - NEXT_PUBLIC_API_URL=http://localhost:5000
-    depends_on:
-      - backend
     networks:
       - somniaID-network
+    healthcheck:
+      test: [ "CMD", "curl", "-f", "http://localhost:5000/health" ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Frontend Next.js App
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: somniaID-frontend
+    restart: unless-stopped
+    environment:
+      - NODE_ENV=production
+      - NEXT_PUBLIC_API_URL=http://localhost:5000/api
+      - NEXT_PUBLIC_CONTRACT_ADDRESS=0xbeAe9159aFC070071328648dDc85d873AD5070a0
+      - NEXT_PUBLIC_RPC_URL=https://dream-rpc.somnia.network/
+      - NEXT_PUBLIC_CHAIN_ID=2648
+    ports:
+      - "3000:3000"
+    depends_on:
+      - backend
     volumes:
       - ./frontend:/app
       - /app/node_modules
+      - /app/.next
+    networks:
+      - somniaID-network
+
+  # NGINX Reverse Proxy
+  nginx:
+    image: nginx:alpine
+    container_name: somniaID-nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/ssl:/etc/nginx/ssl:ro
+    depends_on:
+      - frontend
+      - backend
+    networks:
+      - somniaID-network
+
+  # Background Jobs Processor
+  worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: somniaID-worker
+    restart: unless-stopped
+    command: npm run worker
+    environment:
+      - NODE_ENV=production
+      - MONGODB_URI=mongodb://admin:password123@mongodb:27017/somniaID?authSource=admin
+      - REDIS_URL=redis://redis:6379
+      - CONTRACT_ADDRESS=0xbeAe9159aFC070071328648dDc85d873AD5070a0
+      - RPC_URL=https://dream-rpc.somnia.network/
+    depends_on:
+      - mongodb
+      - redis
+    volumes:
+      - ./backend:/app
+      - /app/node_modules
+    networks:
+      - somniaID-network
+
+  # Monitoring with Prometheus
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: somniaID-prometheus
+    restart: unless-stopped
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+      - '--storage.tsdb.retention.time=200h'
+      - '--web.enable-lifecycle'
+    networks:
+      - somniaID-network
+
+  # Grafana for Visualization
+  grafana:
+    image: grafana/grafana:latest
+    container_name: somniaID-grafana
+    restart: unless-stopped
+    ports:
+      - "3001:3000"
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin123
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./monitoring/grafana/dashboards:/etc/grafana/provisioning/dashboards:ro
+      - ./monitoring/grafana/datasources:/etc/grafana/provisioning/datasources:ro
+    depends_on:
+      - prometheus
+    networks:
+      - somniaID-network
 
 volumes:
   mongodb_data:
+  redis_data:
+  prometheus_data:
+  grafana_data:
 
 
 networks:

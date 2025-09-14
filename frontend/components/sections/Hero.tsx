@@ -1,7 +1,7 @@
 'use client'
 
 import { motion } from 'framer-motion'
-import { ConnectButton } from '@rainbow-me/rainbowkit'
+import { ConnectKitButton } from 'connectkit'
 import { useAccount } from 'wagmi'
 import Link from 'next/link'
 import { Zap, Shield, Users, Trophy } from 'lucide-react'
@@ -49,7 +49,8 @@ export function Hero() {
                                 Go to Dashboard
                             </Link>
                         ) : (
-                            <ConnectButton />
+                            <ConnectKitButton />
+
                         )}
 
                         <Link

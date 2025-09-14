@@ -3,7 +3,8 @@
 import { useState } from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { ConnectButton } from '@rainbow-me/rainbowkit'
+import { ConnectKitButton } from 'connectkit'
+
 import { useAccount } from 'wagmi'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Menu, X, Zap, User, Search, Trophy } from 'lucide-react'
@@ -51,7 +52,7 @@ export function Navbar() {
 
                     {/* Connect Button */}
                     <div className="hidden md:block">
-                        <ConnectButton />
+                        <ConnectKitButton />
                     </div>
 
                     {/* Mobile menu button */}
@@ -92,7 +93,7 @@ export function Navbar() {
                             ))}
 
                             <div className="pt-4 border-t border-gray-200">
-                                <ConnectButton />
+                                <ConnectKitButton />
                             </div>
                         </div>
                     </motion.div>

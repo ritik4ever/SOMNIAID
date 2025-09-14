@@ -1,7 +1,7 @@
 'use client'
 
 import { motion } from 'framer-motion'
-import { ConnectButton } from '@rainbow-me/rainbowkit'
+import { ConnectKitButton } from 'connectkit'
 import { useAccount } from 'wagmi'
 import Link from 'next/link'
 import { ArrowRight, Sparkles, Zap } from 'lucide-react'
@@ -49,7 +49,8 @@ export function CTA() {
                             </Link>
                         ) : (
                             <div className="scale-125">
-                                <ConnectButton />
+                                <ConnectKitButton />
+
                             </div>
                         )}
 
