@@ -23,7 +23,12 @@ const app = express();
 const server = createServer(app);
 const io = new Server(server, {
     cors: {
-        origin: ["http://localhost:3000", "http://localhost:3001"],
+        origin: [
+            "http://localhost:3000",
+            "http://localhost:3001",
+            "https://somniaid.vercel.app",
+            "https://*.vercel.app"
+        ],
         methods: ["GET", "POST", "PUT", "DELETE"],
         credentials: true
     }
@@ -37,7 +42,12 @@ let verificationService: VerificationService;
 
 // Enhanced CORS configuration
 app.use(cors({
-    origin: ["http://localhost:3000", "http://localhost:3001"],
+    origin: [
+        "http://localhost:3000",
+        "http://localhost:3001",
+        "https://somniaid.vercel.app",        // Add your Vercel domain
+        "https://*.vercel.app"                // Allow all Vercel preview deployments
+    ],
     methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allowedHeaders: ["Content-Type", "Authorization", "X-API-Key"],
     credentials: true
