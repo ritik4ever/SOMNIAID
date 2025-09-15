@@ -39,11 +39,20 @@ contract SomniaID is ERC721, ERC721URIStorage, Ownable {
     mapping(address => uint256) public addressToTokenId;
     mapping(string => bool) public usedUsernames;
 
+    // Marketplace functionality
+    mapping(uint256 => uint256) public identityPrices;
+    mapping(uint256 => bool) public isListed;
+
     // Events
     event IdentityCreated(uint256 indexed tokenId, address indexed owner, string username);
     event ReputationUpdated(uint256 indexed tokenId, uint256 newScore, uint256 timestamp);
     event AchievementUnlocked(uint256 indexed tokenId, string title, uint256 points);
     event SkillLevelUp(uint256 indexed tokenId, uint256 newLevel, string skill);
+    
+    // Marketplace events
+    event IdentityListed(uint256 indexed tokenId, uint256 price, address indexed seller);
+    event IdentityPurchased(uint256 indexed tokenId, address indexed buyer, address indexed seller, uint256 price);
+    event ListingCancelled(uint256 indexed tokenId, address indexed seller);
 
     constructor() ERC721("SomniaID", "SID") {}
 
@@ -242,6 +251,103 @@ contract SomniaID is ERC721, ERC721URIStorage, Ownable {
         require(_exists(tokenId), "Identity does not exist");
         identities[tokenId].isVerified = true;
         _setTokenURI(tokenId, _generateTokenURI(tokenId));
+    }
+
+    /**
+     * @dev Lists an identity for sale
+     */
+    function listIdentity(uint256 tokenId, uint256 price) public {
+        require(_exists(tokenId), "Identity does not exist");
+        require(ownerOf(tokenId) == msg.sender, "Not the owner");
+        require(price > 0, "Price must be greater than 0");
+        require(!isListed[tokenId], "Already listed");
+        
+        identityPrices[tokenId] = price;
+        isListed[tokenId] = true;
+        
+        emit IdentityListed(tokenId, price, msg.sender);
+    }
+
+    /**
+     * @dev Purchases a listed identity
+     */
+    function buyIdentity(uint256 tokenId) public payable {
+        require(_exists(tokenId), "Identity does not exist");
+        require(isListed[tokenId], "Not listed for sale");
+        require(msg.value == identityPrices[tokenId], "Incorrect payment amount");
+        
+        address seller = ownerOf(tokenId);
+        require(seller != msg.sender, "Cannot buy your own identity");
+        
+        uint256 price = identityPrices[tokenId];
+        
+        // Remove from listing first
+        isListed[tokenId] = false;
+        identityPrices[tokenId] = 0;
+        
+        // Transfer payment to seller
+        payable(seller).transfer(msg.value);
+        
+        // Update address mapping for new owner
+        addressToTokenId[seller] = 0;
+        addressToTokenId[msg.sender] = tokenId + 1;
+        
+        // Transfer NFT to buyer
+        _transfer(seller, msg.sender, tokenId);
+        
+        emit IdentityPurchased(tokenId, msg.sender, seller, price);
+    }
+
+    /**
+     * @dev Cancels a listing
+     */
+    function cancelListing(uint256 tokenId) public {
+        require(_exists(tokenId), "Identity does not exist");
+        require(ownerOf(tokenId) == msg.sender, "Not the owner");
+        require(isListed[tokenId], "Not listed");
+        
+        isListed[tokenId] = false;
+        identityPrices[tokenId] = 0;
+        
+        emit ListingCancelled(tokenId, msg.sender);
+    }
+
+    /**
+     * @dev Gets listing info for a token
+     */
+    function getListingInfo(uint256 tokenId) public view returns (bool listed, uint256 price) {
+        require(_exists(tokenId), "Identity does not exist");
+        return (isListed[tokenId], identityPrices[tokenId]);
+    }
+
+    /**
+     * @dev Gets all listed identities (returns arrays of tokenIds and prices)
+     */
+    function getListedIdentities() public view returns (uint256[] memory tokenIds, uint256[] memory prices) {
+        uint256 totalSupply = _tokenIdCounter.current();
+        uint256 listedCount = 0;
+        
+        // Count listed items first
+        for (uint256 i = 0; i < totalSupply; i++) {
+            if (_exists(i) && isListed[i]) {
+                listedCount++;
+            }
+        }
+        
+        // Create arrays
+        tokenIds = new uint256[](listedCount);
+        prices = new uint256[](listedCount);
+        
+        uint256 index = 0;
+        for (uint256 i = 0; i < totalSupply; i++) {
+            if (_exists(i) && isListed[i]) {
+                tokenIds[index] = i;
+                prices[index] = identityPrices[i];
+                index++;
+            }
+        }
+        
+        return (tokenIds, prices);
     }
 
     // Override functions required by inheritance

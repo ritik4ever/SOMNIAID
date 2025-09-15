@@ -24,59 +24,48 @@ export const somniaTestnet = {
     testnet: true,
 } as const
 
-// Clear WalletConnect data to prevent conflicts
-if (typeof window !== 'undefined') {
-    const keys = Object.keys(localStorage);
-    keys.forEach(key => {
-        if (key.startsWith('wc@2') || key.startsWith('walletconnect')) {
-            localStorage.removeItem(key);
-        }
-    });
+// Clean up WalletConnect storage only once
+if (typeof window !== 'undefined' && !window.__wcCleared) {
+    try {
+        Object.keys(localStorage).forEach(key => {
+            if (key.startsWith('wc@2') || key.includes('walletconnect')) {
+                localStorage.removeItem(key);
+            }
+        });
+        window.__wcCleared = true;
+    } catch (error) {
+        console.warn('Could not clear WalletConnect storage:', error);
+    }
 }
 
-// FIXED: Dynamic URLs for production/localhost
-const getAppUrl = () => {
-    if (typeof window !== 'undefined') {
-        return window.location.origin
-    }
-    // Fallback based on environment
-    return process.env.NODE_ENV === 'production'
-        ? 'https://somniaid.vercel.app'
-        : 'http://localhost:3000'
-}
-
-// Singleton pattern to prevent multiple configs
-let configInstance: any = null
-
-export const config = (() => {
-    if (configInstance) {
-        return configInstance
-    }
-
-    const baseUrl = getAppUrl()
-
-    configInstance = createConfig(
-        getDefaultConfig({
-            appName: 'SomniaID',
-            appDescription: 'Dynamic Reputation NFTs on Somnia Network',
-            appUrl: baseUrl, // FIXED: Use actual deployment URL
-            appIcon: `${baseUrl}/favicon.ico`, // FIXED: Use actual favicon
-            walletConnectProjectId: process.env.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID || '',
-            chains: [somniaTestnet, mainnet, sepolia],
-            transports: {
-                [somniaTestnet.id]: http(),
-                [mainnet.id]: http(),
-                [sepolia.id]: http(),
-            },
-            ssr: true, // Important for Vercel deployment
-        })
-    )
-
-    return configInstance
-})()
+export const config = createConfig(
+    getDefaultConfig({
+        appName: 'SomniaID',
+        appDescription: 'Dynamic Reputation NFTs on Somnia Network',
+        appUrl: process.env.NODE_ENV === 'production'
+            ? 'https://somniaid.vercel.app'
+            : 'http://localhost:3000',
+        appIcon: '/favicon.ico',
+        walletConnectProjectId: process.env.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID || '',
+        chains: [somniaTestnet, mainnet, sepolia],
+        transports: {
+            [somniaTestnet.id]: http(),
+            [mainnet.id]: http(),
+            [sepolia.id]: http(),
+        },
+        ssr: true,
+    })
+)
 
 declare module 'wagmi' {
     interface Register {
         config: typeof config
+    }
+}
+
+// Add to window type
+declare global {
+    interface Window {
+        __wcCleared?: boolean;
     }
 }

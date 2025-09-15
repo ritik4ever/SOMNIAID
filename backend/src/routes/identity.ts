@@ -76,7 +76,7 @@ router.get('/:tokenId', async (req: Request, res: Response): Promise<void> => {
     }
 });
 
-// FIXED: Enhanced Create identity route with comprehensive data handling and debug logging
+// FIXED: Enhanced Create identity route with automatic verification
 router.post('/create', async (req: Request, res: Response): Promise<void> => {
     try {
         console.log('=== CREATE IDENTITY DEBUG START ===');
@@ -108,29 +108,13 @@ router.post('/create', async (req: Request, res: Response): Promise<void> => {
                 profileData = JSON.parse(bio);
                 console.log('4. Parsed profileData structure:', Object.keys(profileData));
                 console.log('5. Profile section exists:', !!profileData.profile);
+                console.log('6. Transaction hash present:', !!profileData.txHash);
 
                 if (profileData.profile) {
-                    console.log('6. Profile section keys:', Object.keys(profileData.profile));
-                    console.log('7. Achievements count:', profileData.profile.achievements?.length || 0);
-                    console.log('8. Goals count:', profileData.profile.goals?.length || 0);
-                    console.log('9. Skills count:', profileData.profile.skills?.length || 0);
-                    console.log('10. Social links keys:', Object.keys(profileData.profile.socialLinks || {}));
-
-                    // Log individual achievements
-                    if (profileData.profile.achievements?.length > 0) {
-                        console.log('11. Achievement details:');
-                        profileData.profile.achievements.forEach((ach: any, index: number) => {
-                            console.log(`    ${index + 1}. ${ach.title} (${ach.category})`);
-                        });
-                    }
-
-                    // Log individual goals
-                    if (profileData.profile.goals?.length > 0) {
-                        console.log('12. Goal details:');
-                        profileData.profile.goals.forEach((goal: any, index: number) => {
-                            console.log(`    ${index + 1}. ${goal.title} (${goal.priority} priority)`);
-                        });
-                    }
+                    console.log('7. Profile section keys:', Object.keys(profileData.profile));
+                    console.log('8. Achievements count:', profileData.profile.achievements?.length || 0);
+                    console.log('9. Goals count:', profileData.profile.goals?.length || 0);
+                    console.log('10. Skills count:', profileData.profile.skills?.length || 0);
                 }
             } else {
                 console.log('3. Bio is not JSON, treating as string');
@@ -154,7 +138,12 @@ router.post('/create', async (req: Request, res: Response): Promise<void> => {
 
         // Generate tokenId
         const tokenId = Math.floor(Date.now() / 1000);
-        console.log('13. Generated tokenId:', tokenId);
+        console.log('11. Generated tokenId:', tokenId);
+
+        // FIXED: Auto-verify if transaction hash is present
+        const hasTransactionHash = !!profileData.txHash;
+        console.log('12. Has transaction hash:', hasTransactionHash);
+        console.log('13. Transaction hash:', profileData.txHash || 'None');
 
         // Create identity with comprehensive data
         const identityData = {
@@ -166,13 +155,13 @@ router.post('/create', async (req: Request, res: Response): Promise<void> => {
             reputationScore: profileData.reputationScore || 100,
             skillLevel: profileData.skillLevel || 1,
             achievementCount: profileData.profile?.achievements?.length || 0,
-            isVerified: false,
+            isVerified: hasTransactionHash, // FIXED: Auto-verify if txHash exists
             currentPrice: profileData.currentPrice || 10,
             nftBasePrice: 10,
             priceHistory: [{
                 price: profileData.currentPrice || 10,
                 date: new Date(),
-                trigger: 'Initial creation'
+                trigger: hasTransactionHash ? 'Blockchain confirmed creation' : 'Initial creation'
             }],
             profile: {
                 bio: profileData.profile?.bio || '',
@@ -202,28 +191,25 @@ router.post('/create', async (req: Request, res: Response): Promise<void> => {
         console.log('    - Experience Level:', identityData.experience);
         console.log('    - Reputation Score:', identityData.reputationScore);
         console.log('    - Achievement Count:', identityData.achievementCount);
-        console.log('    - Skills Count:', identityData.profile.skills.length);
-        console.log('    - Achievements:', identityData.profile.achievements.length);
-        console.log('    - Goals:', identityData.profile.goals.length);
-        console.log('    - Social Links Filled:', Object.values(identityData.profile.socialLinks).filter(Boolean).length);
-        console.log('    - Bio Length:', identityData.profile.bio.length);
+        console.log('    - IS VERIFIED:', identityData.isVerified); // FIXED: Now shows correct status
         console.log('    - TX Hash:', identityData.txHash ? 'Present' : 'None');
+        console.log('    - Verification Status:', identityData.isVerified ? 'VERIFIED' : 'PENDING');
 
         const identity = new Identity(identityData);
         const savedIdentity = await identity.save();
 
         console.log('15. ✅ Identity created successfully with MongoDB ID:', savedIdentity._id);
-        console.log('16. ✅ All data saved including:');
+        console.log('16. ✅ Verification Status:', savedIdentity.isVerified ? 'VERIFIED' : 'PENDING');
+        console.log('17. ✅ All data saved including:');
         console.log(`    - ${savedIdentity.profile.achievements.length} achievements`);
         console.log(`    - ${savedIdentity.profile.goals.length} goals`);
         console.log(`    - ${savedIdentity.profile.skills.length} skills`);
-        console.log(`    - Social links: ${Object.entries(savedIdentity.profile.socialLinks).filter(([key, value]) => value).map(([key]) => key).join(', ') || 'None'}`);
         console.log('=== CREATE IDENTITY DEBUG END ===');
 
         res.json({
             success: true,
             identity: savedIdentity.toObject(),
-            message: 'Identity created successfully with all profile data'
+            message: `Identity created successfully ${savedIdentity.isVerified ? 'and verified' : 'pending verification'}`
         });
     } catch (error: any) {
         console.error('❌ Error creating identity:', error);
@@ -273,6 +259,42 @@ router.put('/:tokenId', authenticateToken, async (req: AuthenticatedRequest, res
         res.status(500).json({
             success: false,
             error: error.message || 'Failed to update identity'
+        });
+    }
+});
+
+
+router.get('/:tokenId', async (req: Request, res: Response): Promise<void> => {
+    try {
+        const tokenId = parseInt(req.params.tokenId);
+
+        if (isNaN(tokenId)) {
+            res.status(400).json({
+                success: false,
+                error: 'Invalid token ID'
+            });
+            return;
+        }
+
+        const identity = await Identity.findOne({ tokenId }).lean();
+
+        if (!identity) {
+            res.status(404).json({
+                success: false,
+                error: 'Identity not found'
+            });
+            return;
+        }
+
+        res.json({
+            success: true,
+            data: identity
+        });
+    } catch (error) {
+        console.error('Error fetching identity:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Failed to fetch identity'
         });
     }
 });

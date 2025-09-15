@@ -1,6 +1,8 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
     experimental: {
+
+        transpilePackages: ['lucide-react'],
         // appDir: true,
     },
     images: {

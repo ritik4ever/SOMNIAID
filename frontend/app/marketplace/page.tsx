@@ -3,10 +3,11 @@
 import { useState, useEffect } from 'react'
 import { motion } from 'framer-motion'
 import { Search, Filter, TrendingUp, Star, ShoppingCart, Eye, ExternalLink, Trophy, Zap } from 'lucide-react'
-import { useAccount, useWriteContract, useWaitForTransactionReceipt } from 'wagmi'
-import { parseEther } from 'viem'
+import { useAccount, useWriteContract, useWaitForTransactionReceipt, useReadContract } from 'wagmi'
+import { formatEther, parseEther } from 'viem'
 import Link from 'next/link'
 import { api } from '@/utils/api'
+import { CONTRACT_ABI, CONTRACT_ADDRESS } from '@/utils/contract'
 import toast from 'react-hot-toast'
 
 interface MarketplaceItem {
@@ -16,12 +17,10 @@ interface MarketplaceItem {
     reputationScore: number
     skillLevel: number
     achievementCount: number
-    currentPrice: number
+    currentPrice: bigint
     isVerified: boolean
     isForSale: boolean
     seller: string
-    lastSalePrice?: number
-    priceChange24h?: number
     profile?: {
         bio?: string
         skills?: string[]
@@ -44,9 +43,17 @@ export default function MarketplacePage() {
         hash,
     })
 
+    // Get listed identities from contract
+    const { data: listedData, refetch: refetchListings } = useReadContract({
+        address: CONTRACT_ADDRESS,
+        abi: CONTRACT_ABI,
+        functionName: 'getListedIdentities',
+        query: { enabled: !!CONTRACT_ADDRESS }
+    })
+
     useEffect(() => {
         loadMarketplaceItems()
-    }, [])
+    }, [listedData])
 
     useEffect(() => {
         filterAndSortItems()
@@ -55,29 +62,83 @@ export default function MarketplacePage() {
     const loadMarketplaceItems = async () => {
         try {
             setLoading(true)
-            const response = await api.getIdentities(1, 50)
 
-            if (response.success && response.identities) {
-                // Simulate marketplace data - in reality this would come from backend
-                const marketplaceItems: MarketplaceItem[] = response.identities.map((identity: any) => ({
-                    tokenId: identity.tokenId,
-                    username: identity.username,
-                    primarySkill: identity.primarySkill,
-                    reputationScore: identity.reputationScore,
-                    skillLevel: identity.skillLevel,
-                    achievementCount: identity.achievementCount,
-                    currentPrice: identity.currentPrice || 10,
-                    isVerified: identity.isVerified,
-                    isForSale: Math.random() > 0.3, // 70% chance of being for sale
-                    seller: identity.ownerAddress,
-                    lastSalePrice: (identity.currentPrice || 10) * (0.8 + Math.random() * 0.4),
-                    priceChange24h: (Math.random() - 0.5) * 20, // -10% to +10%
-                    profile: identity.profile
-                }))
+            if (listedData && Array.isArray(listedData) && listedData.length === 2) {
+                const tokenIds = listedData[0] as readonly bigint[]
+                const prices = listedData[1] as readonly bigint[]
+
+                console.log('Listed tokens:', tokenIds, 'Prices:', prices)
+
+                if (tokenIds.length === 0) {
+                    // No listings, show demo data
+                    setItems(generateDemoMarketplaceData())
+                    setLoading(false)
+                    return
+                }
+
+                // Get identity details for each listed token
+                const marketplaceItems: MarketplaceItem[] = []
+
+                for (let i = 0; i < tokenIds.length; i++) {
+                    try {
+                        // Get identity from your API
+                        const response = await api.getIdentity(Number(tokenIds[i]))
+
+                        // Create fallback data first
+                        const fallbackData = {
+                            tokenId: Number(tokenIds[i]),
+                            username: `Identity #${tokenIds[i]}`,
+                            primarySkill: 'Unknown Skill',
+                            reputationScore: 100,
+                            skillLevel: 1,
+                            achievementCount: 0,
+                            currentPrice: prices[i],
+                            isVerified: false,
+                            isForSale: true,
+                            seller: '0x...',
+                            profile: {}
+                        }
+
+                        if (response.success && response.data && typeof response.data === 'object') {
+                            const data = response.data as any
+
+                            marketplaceItems.push({
+                                ...fallbackData,
+                                username: data.username || fallbackData.username,
+                                primarySkill: data.primarySkill || fallbackData.primarySkill,
+                                reputationScore: data.reputationScore || fallbackData.reputationScore,
+                                skillLevel: data.skillLevel || fallbackData.skillLevel,
+                                achievementCount: data.achievementCount || fallbackData.achievementCount,
+                                isVerified: data.isVerified || fallbackData.isVerified,
+                                seller: data.ownerAddress || fallbackData.seller,
+                                profile: data.profile || fallbackData.profile
+                            })
+                        } else {
+                            // Use fallback data if API response is invalid
+                            marketplaceItems.push(fallbackData)
+                        }
+                    } catch (error) {
+                        console.error(`Error loading identity ${tokenIds[i]}:`, error)
+                        // Add fallback item if everything fails
+                        marketplaceItems.push({
+                            tokenId: Number(tokenIds[i]),
+                            username: `Identity #${tokenIds[i]}`,
+                            primarySkill: 'Unknown Skill',
+                            reputationScore: 100,
+                            skillLevel: 1,
+                            achievementCount: 0,
+                            currentPrice: prices[i],
+                            isVerified: false,
+                            isForSale: true,
+                            seller: '0x...',
+                            profile: {}
+                        })
+                    }
+                }
 
                 setItems(marketplaceItems)
             } else {
-                // Demo data if API fails
+                // No contract data, show demo
                 setItems(generateDemoMarketplaceData())
             }
         } catch (error) {
@@ -89,65 +150,8 @@ export default function MarketplacePage() {
     }
 
     const generateDemoMarketplaceData = (): MarketplaceItem[] => {
-        return [
-            {
-                tokenId: 1001,
-                username: 'CryptoBuilder',
-                primarySkill: 'Smart Contract Development',
-                reputationScore: 850,
-                skillLevel: 4,
-                achievementCount: 12,
-                currentPrice: 45.5,
-                isVerified: true,
-                isForSale: true,
-                seller: '0x1234...5678',
-                lastSalePrice: 42.0,
-                priceChange24h: 8.3,
-                profile: {
-                    bio: 'Senior blockchain developer with 5+ years experience',
-                    skills: ['Solidity', 'Web3.js', 'DeFi'],
-                    achievements: []
-                }
-            },
-            {
-                tokenId: 1002,
-                username: 'NFTArtist',
-                primarySkill: 'NFT Creation',
-                reputationScore: 650,
-                skillLevel: 3,
-                achievementCount: 8,
-                currentPrice: 28.9,
-                isVerified: true,
-                isForSale: true,
-                seller: '0x2345...6789',
-                lastSalePrice: 30.5,
-                priceChange24h: -5.2,
-                profile: {
-                    bio: 'Digital artist creating unique NFT collections',
-                    skills: ['Digital Art', 'Photoshop', 'Blender'],
-                    achievements: []
-                }
-            },
-            {
-                tokenId: 1003,
-                username: 'DeFiTrader',
-                primarySkill: 'DeFi Protocol Design',
-                reputationScore: 720,
-                skillLevel: 3,
-                achievementCount: 15,
-                currentPrice: 67.2,
-                isVerified: false,
-                isForSale: true,
-                seller: '0x3456...7890',
-                lastSalePrice: 59.8,
-                priceChange24h: 12.4,
-                profile: {
-                    bio: 'DeFi protocol architect and yield farmer',
-                    skills: ['DeFi', 'Yield Farming', 'Liquidity Mining'],
-                    achievements: []
-                }
-            }
-        ]
+        // Return empty array 
+        return []
     }
 
     const filterAndSortItems = () => {
@@ -158,16 +162,19 @@ export default function MarketplacePage() {
             const matchesFilter = filter === 'all' ||
                 (filter === 'verified' && item.isVerified) ||
                 (filter === 'for_sale' && item.isForSale) ||
-                (filter === 'high_value' && item.currentPrice > 50)
+                (filter === 'high_value' && Number(formatEther(item.currentPrice)) > 50)
 
             return matchesSearch && matchesFilter && item.isForSale
         })
 
         // Sort items
         filtered.sort((a, b) => {
+            const aPrice = Number(formatEther(a.currentPrice))
+            const bPrice = Number(formatEther(b.currentPrice))
+
             switch (sortBy) {
-                case 'price_asc': return a.currentPrice - b.currentPrice
-                case 'price_desc': return b.currentPrice - a.currentPrice
+                case 'price_asc': return aPrice - bPrice
+                case 'price_desc': return bPrice - aPrice
                 case 'reputation': return b.reputationScore - a.reputationScore
                 case 'achievements': return b.achievementCount - a.achievementCount
                 case 'recent': return b.tokenId - a.tokenId
@@ -192,15 +199,12 @@ export default function MarketplacePage() {
         try {
             setBuyingTokenId(item.tokenId)
 
-            // Call marketplace contract (simplified)
             writeContract({
-                address: process.env.NEXT_PUBLIC_MARKETPLACE_CONTRACT as `0x${string}`,
-                abi: [
-                    "function buyNFT(uint256 tokenId) external payable"
-                ],
-                functionName: 'buyNFT',
+                address: CONTRACT_ADDRESS,
+                abi: CONTRACT_ABI,
+                functionName: 'buyIdentity',
                 args: [BigInt(item.tokenId)],
-                value: parseEther(item.currentPrice.toString())
+                value: item.currentPrice
             })
 
             toast.loading('Processing purchase...')
@@ -213,8 +217,10 @@ export default function MarketplacePage() {
 
     useEffect(() => {
         if (isConfirmed && buyingTokenId) {
+            toast.dismiss()
             toast.success('NFT purchased successfully!')
             setBuyingTokenId(null)
+            refetchListings() // Refresh listings
             loadMarketplaceItems() // Refresh marketplace
         }
     }, [isConfirmed, buyingTokenId])
@@ -251,23 +257,27 @@ export default function MarketplacePage() {
 
                 {/* Stats Bar */}
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
-                    <div className="bg-white rounded-xl p-4 text-center">
+                    <div className="bg-white rounded-xl p-4 text-center shadow-sm">
                         <div className="text-2xl font-bold text-blue-600">{filteredItems.length}</div>
                         <div className="text-sm text-gray-600">For Sale</div>
                     </div>
-                    <div className="bg-white rounded-xl p-4 text-center">
+                    <div className="bg-white rounded-xl p-4 text-center shadow-sm">
                         <div className="text-2xl font-bold text-green-600">
-                            {Math.round(filteredItems.reduce((sum, item) => sum + item.currentPrice, 0))} STT
+                            {Math.round(Number(formatEther(
+                                filteredItems.reduce((sum, item) => sum + item.currentPrice, BigInt(0))
+                            )))} STT
                         </div>
                         <div className="text-sm text-gray-600">Total Value</div>
                     </div>
-                    <div className="bg-white rounded-xl p-4 text-center">
+                    <div className="bg-white rounded-xl p-4 text-center shadow-sm">
                         <div className="text-2xl font-bold text-purple-600">
-                            {Math.round(filteredItems.reduce((sum, item) => sum + item.currentPrice, 0) / filteredItems.length || 0)} STT
+                            {filteredItems.length > 0 ? Math.round(Number(formatEther(
+                                filteredItems.reduce((sum, item) => sum + item.currentPrice, BigInt(0))
+                            )) / filteredItems.length) : 0} STT
                         </div>
                         <div className="text-sm text-gray-600">Avg Price</div>
                     </div>
-                    <div className="bg-white rounded-xl p-4 text-center">
+                    <div className="bg-white rounded-xl p-4 text-center shadow-sm">
                         <div className="text-2xl font-bold text-orange-600">
                             {filteredItems.filter(item => item.isVerified).length}
                         </div>
@@ -284,7 +294,7 @@ export default function MarketplacePage() {
                             placeholder="Search by username or skill..."
                             value={searchQuery}
                             onChange={(e) => setSearchQuery(e.target.value)}
-                            className="w-full pl-10 pr-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                            className="w-full pl-10 pr-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white shadow-sm"
                         />
                     </div>
 
@@ -292,7 +302,7 @@ export default function MarketplacePage() {
                         <select
                             value={filter}
                             onChange={(e) => setFilter(e.target.value)}
-                            className="px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500"
+                            className="px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 bg-white shadow-sm"
                         >
                             <option value="all">All NFTs</option>
                             <option value="verified">Verified Only</option>
@@ -303,7 +313,7 @@ export default function MarketplacePage() {
                         <select
                             value={sortBy}
                             onChange={(e) => setSortBy(e.target.value)}
-                            className="px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500"
+                            className="px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 bg-white shadow-sm"
                         >
                             <option value="price_asc">Price: Low to High</option>
                             <option value="price_desc">Price: High to Low</option>
@@ -318,8 +328,24 @@ export default function MarketplacePage() {
                 {filteredItems.length === 0 ? (
                     <div className="text-center py-16">
                         <ShoppingCart className="w-16 h-16 text-gray-400 mx-auto mb-4" />
-                        <h3 className="text-xl font-semibold text-gray-700 mb-2">No NFTs found</h3>
-                        <p className="text-gray-500">Try adjusting your search or filters</p>
+                        <h3 className="text-xl font-semibold text-gray-700 mb-2">No NFTs available</h3>
+                        <p className="text-gray-500 mb-4">
+                            {(() => {
+                                if (listedData && Array.isArray(listedData) && listedData.length >= 2) {
+                                    const tokenIds = listedData[0] as readonly bigint[]
+                                    return tokenIds.length === 0
+                                        ? "No identities are currently listed for sale"
+                                        : "Try adjusting your search or filters"
+                                }
+                                return "Loading marketplace data..."
+                            })()}
+                        </p>
+                        <Link
+                            href="/dashboard"
+                            className="inline-flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                        >
+                            Create Identity to List
+                        </Link>
                     </div>
                 ) : (
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
@@ -329,7 +355,7 @@ export default function MarketplacePage() {
                                 initial={{ opacity: 0, y: 20 }}
                                 animate={{ opacity: 1, y: 0 }}
                                 transition={{ delay: index * 0.1 }}
-                                className="bg-white rounded-2xl overflow-hidden shadow-sm border border-gray-100 hover:shadow-lg transition-shadow"
+                                className="bg-white rounded-2xl overflow-hidden shadow-sm border border-gray-100 hover:shadow-lg transition-all duration-300"
                             >
                                 {/* NFT Header */}
                                 <div className="p-4 border-b border-gray-100">
@@ -350,9 +376,14 @@ export default function MarketplacePage() {
                                                 <div className="text-xs text-gray-500">#{item.tokenId}</div>
                                             </div>
                                         </div>
-                                        <Link href={`/profile/${item.tokenId}`}>
-                                            <Eye className="w-4 h-4 text-gray-400 hover:text-gray-600" />
-                                        </Link>
+                                        <a
+                                            href={`https://shannon-explorer.somnia.network/token/${CONTRACT_ADDRESS}?a=${item.tokenId}`}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            className="text-gray-400 hover:text-gray-600"
+                                        >
+                                            <ExternalLink className="w-4 h-4" />
+                                        </a>
                                     </div>
                                     <p className="text-sm text-gray-600">{item.primarySkill}</p>
                                 </div>
@@ -375,36 +406,41 @@ export default function MarketplacePage() {
                                     </div>
 
                                     {/* Price */}
-                                    <div className="bg-gray-50 rounded-lg p-3">
-                                        <div className="flex items-center justify-between">
-                                            <div>
-                                                <div className="text-lg font-bold text-gray-900">
-                                                    {item.currentPrice} STT
-                                                </div>
-                                                <div className="text-xs text-gray-500">
-                                                    ~${(item.currentPrice * 0.1).toFixed(2)} USD
-                                                </div>
+                                    <div className="bg-gradient-to-r from-blue-50 to-purple-50 rounded-lg p-3">
+                                        <div className="text-center">
+                                            <div className="text-lg font-bold text-gray-900">
+                                                {formatEther(item.currentPrice)} STT
                                             </div>
-                                            {item.priceChange24h && (
-                                                <div className={`text-xs font-medium ${item.priceChange24h > 0 ? 'text-green-600' : 'text-red-600'
-                                                    }`}>
-                                                    {item.priceChange24h > 0 ? '+' : ''}
-                                                    {item.priceChange24h.toFixed(1)}%
-                                                </div>
-                                            )}
+                                            <div className="text-xs text-gray-500">
+                                                ~${(Number(formatEther(item.currentPrice)) * 0.1).toFixed(2)} USD
+                                            </div>
                                         </div>
                                     </div>
 
                                     {/* Buy Button */}
                                     <button
-                                        onClick={() => handleBuyNFT(item)}
-                                        disabled={!isConnected || buyingTokenId === item.tokenId || isPending}
-                                        className="w-full bg-gradient-to-r from-blue-600 to-purple-600 text-white py-2 px-4 rounded-lg font-medium hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-300 flex items-center justify-center space-x-2"
+                                        onClick={() => {
+                                            // Check if this is demo data
+                                            if (item.tokenId >= 1001) {
+                                                toast.error('This is demo data. Real NFTs will have lower token IDs.')
+                                                return
+                                            }
+                                            handleBuyNFT(item)
+                                        }}
+                                        disabled={!isConnected || buyingTokenId === item.tokenId || isPending || isConfirming || item.tokenId >= 1001}
+                                        className={`w-full py-3 px-4 rounded-lg font-medium transition-all duration-300 flex items-center justify-center space-x-2 ${item.tokenId >= 1001
+                                            ? 'bg-gray-400 text-gray-600 cursor-not-allowed'
+                                            : 'bg-gradient-to-r from-blue-600 to-purple-600 text-white hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed'
+                                            }`}
                                     >
-                                        {buyingTokenId === item.tokenId ? (
+                                        {item.tokenId >= 1001 ? (
+                                            <>
+                                                <span>Demo NFT</span>
+                                            </>
+                                        ) : buyingTokenId === item.tokenId ? (
                                             <>
                                                 <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                                                <span>Buying...</span>
+                                                <span>{isConfirming ? 'Confirming...' : 'Buying...'}</span>
                                             </>
                                         ) : (
                                             <>

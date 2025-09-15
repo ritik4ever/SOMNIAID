@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react'
 import { useAccount, useWaitForTransactionReceipt, useWriteContract } from 'wagmi'
 import { motion } from 'framer-motion'
-import { User, Zap, Trophy, Plus, Search, TrendingUp, ExternalLink } from 'lucide-react'
+import { User, Zap, Trophy, Plus, Search, TrendingUp, ExternalLink, Tag } from 'lucide-react'
 import { ReputationCard } from '@/components/dashboard/ReputationCard'
 import { CreateIdentity } from '@/components/dashboard/CreateIdentity'
 import { ProfileSection } from '@/components/dashboard/ProfileSection'
@@ -15,6 +15,7 @@ import toast from 'react-hot-toast'
 import QuickActions from '@/components/dashboard/QuickActions'
 import { WalletDebugComponent } from '@/components/WalletDebugComponent'
 import { NetworkSwitcher } from '@/components/NetworkSwitcher'
+import { parseEther } from 'viem'
 
 const CONTRACT_ADDRESS = process.env.NEXT_PUBLIC_CONTRACT_ADDRESS as `0x${string}`
 
@@ -48,6 +49,11 @@ export default function DashboardPage() {
     const [showCreateForm, setShowCreateForm] = useState(false)
     const [creating, setCreating] = useState(false)
 
+    // Listing modal state
+    const [showListModal, setShowListModal] = useState(false)
+    const [listPrice, setListPrice] = useState('')
+    const [isListing, setIsListing] = useState(false)
+
     const { writeContract, data: hash, error, isPending } = useWriteContract()
 
     const { isLoading: isConfirming, isSuccess: isConfirmed } = useWaitForTransactionReceipt({
@@ -68,6 +74,17 @@ export default function DashboardPage() {
             checkUserIdentity()
         }
     }, [isConfirmed, hash])
+
+    // Add this useEffect to handle listing confirmation
+    useEffect(() => {
+        if (isConfirmed && isListing) {
+            toast.dismiss()
+            toast.success('Identity listed for sale!')
+            setIsListing(false)
+            setShowListModal(false)
+            setListPrice('')
+        }
+    }, [isConfirmed, isListing])
 
     const checkUserIdentity = async () => {
         try {
@@ -115,6 +132,31 @@ export default function DashboardPage() {
         setShowCreateForm(false)
         setCreating(false)
         toast.success('Identity created successfully!')
+    }
+
+    // Add this function after your existing functions
+    const handleListForSale = async () => {
+        if (!listPrice || parseFloat(listPrice) <= 0) {
+            toast.error('Please enter a valid price')
+            return
+        }
+
+        try {
+            setIsListing(true)
+
+            writeContract({
+                address: CONTRACT_ADDRESS,
+                abi: CONTRACT_ABI,
+                functionName: 'listIdentity',
+                args: [BigInt(identity!.tokenId), parseEther(listPrice)]
+            })
+
+            toast.loading('Listing your identity for sale...')
+        } catch (error: any) {
+            console.error('Listing error:', error)
+            toast.error('Failed to list identity')
+            setIsListing(false)
+        }
     }
 
     if (loading) {
@@ -349,6 +391,16 @@ export default function DashboardPage() {
                                     <User className="w-5 h-5 text-green-600" />
                                     <span className="font-medium text-green-700">Update Profile</span>
                                 </button>
+
+                                {/* List for Sale Button */}
+                                <button
+                                    onClick={() => setShowListModal(true)}
+                                    className="w-full flex items-center space-x-3 p-3 bg-yellow-50 rounded-xl hover:bg-yellow-100 transition-colors"
+                                >
+                                    <Tag className="w-5 h-5 text-yellow-600" />
+                                    <span className="font-medium text-yellow-700">List for Sale</span>
+                                </button>
+
                                 <button className="w-full flex items-center space-x-3 p-3 bg-purple-50 rounded-xl hover:bg-purple-100 transition-colors">
                                     <Search className="w-5 h-5 text-purple-600" />
                                     <span className="font-medium text-purple-700">Explore Network</span>
@@ -398,6 +450,55 @@ export default function DashboardPage() {
                         </motion.div>
                     </div>
                 </div>
+
+                {/* List for Sale Modal */}
+                {showListModal && (
+                    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+                        <div className="bg-white rounded-2xl p-6 max-w-md w-full mx-4">
+                            <h3 className="text-xl font-bold text-gray-900 mb-4">List Identity for Sale</h3>
+
+                            <div className="mb-4">
+                                <label className="block text-sm font-medium text-gray-700 mb-2">
+                                    Price (STT)
+                                </label>
+                                <input
+                                    type="number"
+                                    step="0.1"
+                                    min="0.1"
+                                    value={listPrice}
+                                    onChange={(e) => setListPrice(e.target.value)}
+                                    placeholder="Enter price in STT"
+                                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                                />
+                                <p className="text-xs text-gray-500 mt-1">
+                                    ~${(parseFloat(listPrice || '0') * 0.1).toFixed(2)} USD
+                                </p>
+                            </div>
+
+                            <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3 mb-4">
+                                <p className="text-yellow-800 text-sm">
+                                    <strong>Testnet Only:</strong> This is Somnia testnet. Real trading on mainnet coming soon!
+                                </p>
+                            </div>
+
+                            <div className="flex space-x-3">
+                                <button
+                                    onClick={() => setShowListModal(false)}
+                                    className="flex-1 px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50"
+                                >
+                                    Cancel
+                                </button>
+                                <button
+                                    onClick={handleListForSale}
+                                    disabled={isListing || !listPrice}
+                                    className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
+                                >
+                                    {isListing ? 'Listing...' : 'List for Sale'}
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                )}
             </div>
         </div>
     )

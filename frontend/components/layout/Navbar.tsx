@@ -19,7 +19,9 @@ export default function Navbar() {
         { name: 'Marketplace', href: '/marketplace', icon: ShoppingCart },
         { name: 'Leaderboard', href: '/leaderboard', icon: TrendingUp },
         { name: 'Dashboard', href: '/dashboard', icon: null, requiresConnection: true },
-        { name: 'Portfolio', href: '/portfolio', icon: Wallet, requiresConnection: true }
+        { name: 'Portfolio', href: '/portfolio', icon: Wallet, requiresConnection: true },
+
+
     ]
 
     const isActive = (href: string) => {

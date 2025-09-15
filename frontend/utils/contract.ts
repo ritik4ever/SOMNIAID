@@ -1,4 +1,3 @@
-
 export const CONTRACT_ABI = [
     {
         "inputs": [],
@@ -122,6 +121,81 @@ export const CONTRACT_ABI = [
             }
         ],
         "name": "IdentityCreated",
+        "type": "event"
+    },
+    {
+        "anonymous": false,
+        "inputs": [
+            {
+                "indexed": true,
+                "internalType": "uint256",
+                "name": "tokenId",
+                "type": "uint256"
+            },
+            {
+                "indexed": false,
+                "internalType": "uint256",
+                "name": "price",
+                "type": "uint256"
+            },
+            {
+                "indexed": true,
+                "internalType": "address",
+                "name": "seller",
+                "type": "address"
+            }
+        ],
+        "name": "IdentityListed",
+        "type": "event"
+    },
+    {
+        "anonymous": false,
+        "inputs": [
+            {
+                "indexed": true,
+                "internalType": "uint256",
+                "name": "tokenId",
+                "type": "uint256"
+            },
+            {
+                "indexed": true,
+                "internalType": "address",
+                "name": "buyer",
+                "type": "address"
+            },
+            {
+                "indexed": true,
+                "internalType": "address",
+                "name": "seller",
+                "type": "address"
+            },
+            {
+                "indexed": false,
+                "internalType": "uint256",
+                "name": "price",
+                "type": "uint256"
+            }
+        ],
+        "name": "IdentityPurchased",
+        "type": "event"
+    },
+    {
+        "anonymous": false,
+        "inputs": [
+            {
+                "indexed": true,
+                "internalType": "uint256",
+                "name": "tokenId",
+                "type": "uint256"
+            },
+            {
+                "indexed": true,
+                "internalType": "address",
+                "name": "seller",
+                "type": "address"
+            }
+        ],
+        "name": "ListingCancelled",
         "type": "event"
     },
     {
@@ -357,6 +431,32 @@ export const CONTRACT_ABI = [
     {
         "inputs": [
             {
+                "internalType": "uint256",
+                "name": "tokenId",
+                "type": "uint256"
+            }
+        ],
+        "name": "buyIdentity",
+        "outputs": [],
+        "stateMutability": "payable",
+        "type": "function"
+    },
+    {
+        "inputs": [
+            {
+                "internalType": "uint256",
+                "name": "tokenId",
+                "type": "uint256"
+            }
+        ],
+        "name": "cancelListing",
+        "outputs": [],
+        "stateMutability": "nonpayable",
+        "type": "function"
+    },
+    {
+        "inputs": [
+            {
                 "internalType": "string",
                 "name": "username",
                 "type": "string"
@@ -484,6 +584,48 @@ export const CONTRACT_ABI = [
         "type": "function"
     },
     {
+        "inputs": [],
+        "name": "getListedIdentities",
+        "outputs": [
+            {
+                "internalType": "uint256[]",
+                "name": "tokenIds",
+                "type": "uint256[]"
+            },
+            {
+                "internalType": "uint256[]",
+                "name": "prices",
+                "type": "uint256[]"
+            }
+        ],
+        "stateMutability": "view",
+        "type": "function"
+    },
+    {
+        "inputs": [
+            {
+                "internalType": "uint256",
+                "name": "tokenId",
+                "type": "uint256"
+            }
+        ],
+        "name": "getListingInfo",
+        "outputs": [
+            {
+                "internalType": "bool",
+                "name": "listed",
+                "type": "bool"
+            },
+            {
+                "internalType": "uint256",
+                "name": "price",
+                "type": "uint256"
+            }
+        ],
+        "stateMutability": "view",
+        "type": "function"
+    },
+    {
         "inputs": [
             {
                 "internalType": "address",
@@ -581,6 +723,25 @@ export const CONTRACT_ABI = [
     {
         "inputs": [
             {
+                "internalType": "uint256",
+                "name": "",
+                "type": "uint256"
+            }
+        ],
+        "name": "identityPrices",
+        "outputs": [
+            {
+                "internalType": "uint256",
+                "name": "",
+                "type": "uint256"
+            }
+        ],
+        "stateMutability": "view",
+        "type": "function"
+    },
+    {
+        "inputs": [
+            {
                 "internalType": "address",
                 "name": "owner",
                 "type": "address"
@@ -600,6 +761,43 @@ export const CONTRACT_ABI = [
             }
         ],
         "stateMutability": "view",
+        "type": "function"
+    },
+    {
+        "inputs": [
+            {
+                "internalType": "uint256",
+                "name": "",
+                "type": "uint256"
+            }
+        ],
+        "name": "isListed",
+        "outputs": [
+            {
+                "internalType": "bool",
+                "name": "",
+                "type": "bool"
+            }
+        ],
+        "stateMutability": "view",
+        "type": "function"
+    },
+    {
+        "inputs": [
+            {
+                "internalType": "uint256",
+                "name": "tokenId",
+                "type": "uint256"
+            },
+            {
+                "internalType": "uint256",
+                "name": "price",
+                "type": "uint256"
+            }
+        ],
+        "name": "listIdentity",
+        "outputs": [],
+        "stateMutability": "nonpayable",
         "type": "function"
     },
     {
@@ -870,8 +1068,8 @@ export const CONTRACT_ABI = [
 export const CONTRACT_ADDRESS = process.env.NEXT_PUBLIC_CONTRACT_ADDRESS as `0x${string}`
 
 // Enhanced validation - Keep this for debugging
-if (!CONTRACT_ADDRESS || !CONTRACT_ADDRESS.startsWith('0x')) {
-    console.error('❌ Invalid contract address:', CONTRACT_ADDRESS)
+if (!CONTRACT_ADDRESS || CONTRACT_ADDRESS === '0xbeAe9159aFC070071328648dDc85d873AD5070a0') {
+    console.error('❌ Contract address not updated! Using old contract.')
 } else {
     console.log('✅ Contract address loaded:', CONTRACT_ADDRESS)
 }
@@ -888,13 +1086,18 @@ if (!createIdentityFunction) {
     console.log('Function inputs:', createIdentityFunction.inputs)
 }
 
-// Log other important functions for debugging
+// Log important functions for debugging (including new marketplace functions)
 const importantFunctions = [
     'getIdentity',
     'hasIdentity',
     'getTokenIdByAddress',
     'addAchievement',
-    'updateReputation'
+    'updateReputation',
+    'listIdentity',
+    'buyIdentity',
+    'cancelListing',
+    'getListingInfo',
+    'getListedIdentities'
 ]
 
 importantFunctions.forEach(funcName => {
