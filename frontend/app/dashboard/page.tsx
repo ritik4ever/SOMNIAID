@@ -12,6 +12,9 @@ import { ActivityFeed } from '@/components/dashboard/ActivityFeed'
 import { api } from '@/utils/api'
 import { CONTRACT_ABI } from '@/utils/contract'
 import toast from 'react-hot-toast'
+import QuickActions from '@/components/dashboard/QuickActions'
+import { WalletDebugComponent } from '@/components/WalletDebugComponent'
+import { NetworkSwitcher } from '@/components/NetworkSwitcher'
 
 const CONTRACT_ADDRESS = process.env.NEXT_PUBLIC_CONTRACT_ADDRESS as `0x${string}`
 
@@ -168,6 +171,12 @@ export default function DashboardPage() {
                                 </div>
                             </div>
                         </div>
+
+                        {/* Debug Components */}
+                        <div className="mt-8 space-y-4">
+                            <WalletDebugComponent />
+                            <NetworkSwitcher />
+                        </div>
                     </motion.div>
                 </div>
             </div>
@@ -210,6 +219,12 @@ export default function DashboardPage() {
                                 )}
                             </div>
                         )}
+
+                        {/* Debug Components */}
+                        <div className="mt-8 space-y-4">
+                            <WalletDebugComponent />
+                            <NetworkSwitcher />
+                        </div>
                     </motion.div>
                 </div>
             </div>
@@ -367,6 +382,20 @@ export default function DashboardPage() {
                         </motion.div>
 
                         <ActivityFeed />
+
+                        {/* Debug Components */}
+                        <motion.div
+                            initial={{ opacity: 0, x: 20 }}
+                            animate={{ opacity: 1, x: 0 }}
+                            transition={{ delay: 0.5 }}
+                            className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100"
+                        >
+                            <h3 className="text-lg font-bold text-gray-900 mb-4">Debug Tools</h3>
+                            <div className="space-y-4">
+                                <WalletDebugComponent />
+                                <NetworkSwitcher />
+                            </div>
+                        </motion.div>
                     </div>
                 </div>
             </div>

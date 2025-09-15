@@ -1,104 +1,132 @@
 'use client'
 
-import { useState } from 'react'
 import Link from 'next/link'
+import { useState } from 'react'
 import { usePathname } from 'next/navigation'
 import { ConnectKitButton } from 'connectkit'
-
 import { useAccount } from 'wagmi'
-import { motion, AnimatePresence } from 'framer-motion'
-import { Menu, X, Zap, User, Search, Trophy } from 'lucide-react'
+import { motion } from 'framer-motion'
+import { Menu, X, Zap, ShoppingCart, Wallet, TrendingUp } from 'lucide-react'
 
-export function Navbar() {
+export default function Navbar() {
     const [isOpen, setIsOpen] = useState(false)
     const pathname = usePathname()
     const { isConnected } = useAccount()
 
-    const navItems = [
-        { href: '/', label: 'Home', icon: Zap },
-        { href: '/explore', label: 'Explore', icon: Search },
-        { href: '/leaderboard', label: 'Leaderboard', icon: Trophy },
-        ...(isConnected ? [{ href: '/dashboard', label: 'Dashboard', icon: User }] : [])
+    const navigation = [
+        { name: 'Home', href: '/', icon: null },
+        { name: 'Explore', href: '/explore', icon: null },
+        { name: 'Marketplace', href: '/marketplace', icon: ShoppingCart },
+        { name: 'Leaderboard', href: '/leaderboard', icon: TrendingUp },
+        { name: 'Dashboard', href: '/dashboard', icon: null, requiresConnection: true },
+        { name: 'Portfolio', href: '/portfolio', icon: Wallet, requiresConnection: true }
     ]
 
+    const isActive = (href: string) => {
+        if (href === '/') {
+            return pathname === '/'
+        }
+        return pathname?.startsWith(href) || false
+    }
+
     return (
-        <nav className="fixed top-0 left-0 right-0 z-50 bg-white/80 backdrop-blur-lg border-b border-gray-200">
+        <nav className="fixed top-0 left-0 right-0 z-50 bg-white/90 backdrop-blur-md border-b border-gray-100">
             <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
                 <div className="flex justify-between items-center h-16">
                     {/* Logo */}
-                    <Link href="/" className="flex items-center space-x-3">
-                        <div className="w-10 h-10 bg-gradient-to-r from-purple-600 to-indigo-600 rounded-xl flex items-center justify-center">
-                            <Zap className="w-6 h-6 text-white" />
+                    <Link href="/" className="flex items-center space-x-2">
+                        <div className="w-8 h-8 bg-gradient-to-r from-blue-600 to-purple-600 rounded-lg flex items-center justify-center">
+                            <Zap className="w-5 h-5 text-white" />
                         </div>
-                        <span className="text-2xl font-bold gradient-text">SomniaID</span>
+                        <span className="text-xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
+                            SomniaID
+                        </span>
                     </Link>
 
                     {/* Desktop Navigation */}
-                    <div className="hidden md:flex items-center space-x-8">
-                        {navItems.map((item) => (
-                            <Link
-                                key={item.href}
-                                href={item.href}
-                                className={`flex items-center space-x-2 px-4 py-2 rounded-lg transition-all duration-200 ${pathname === item.href
-                                    ? 'bg-purple-100 text-purple-700'
-                                    : 'text-gray-600 hover:text-purple-600 hover:bg-purple-50'
-                                    }`}
-                            >
-                                <item.icon className="w-4 h-4" />
-                                <span className="font-medium">{item.label}</span>
-                            </Link>
-                        ))}
+                    <div className="hidden md:flex items-center space-x-1">
+                        {navigation.map((item) => {
+                            // Skip items that require connection if not connected
+                            if (item.requiresConnection && !isConnected) {
+                                return null
+                            }
+
+                            const Icon = item.icon
+
+                            return (
+                                <Link
+                                    key={item.name}
+                                    href={item.href}
+                                    className={`flex items-center space-x-1 px-4 py-2 rounded-lg font-medium transition-all duration-200 ${isActive(item.href)
+                                        ? 'bg-blue-50 text-blue-700 shadow-sm'
+                                        : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
+                                        }`}
+                                >
+                                    {Icon && <Icon className="w-4 h-4" />}
+                                    <span>{item.name}</span>
+                                </Link>
+                            )
+                        })}
                     </div>
 
-                    {/* Connect Button */}
-                    <div className="hidden md:block">
-                        <ConnectKitButton />
-                    </div>
+                    {/* Wallet Connection & Mobile Menu */}
+                    <div className="flex items-center space-x-4">
+                        {/* Connect Wallet Button */}
+                        <div className="hidden sm:block">
+                            <ConnectKitButton />
+                        </div>
 
-                    {/* Mobile menu button */}
-                    <div className="md:hidden">
+                        {/* Mobile menu button */}
                         <button
                             onClick={() => setIsOpen(!isOpen)}
-                            className="p-2 rounded-lg text-gray-600 hover:text-purple-600 hover:bg-purple-50"
+                            className="md:hidden p-2 rounded-lg text-gray-600 hover:text-gray-900 hover:bg-gray-50"
                         >
-                            {isOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
+                            {isOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
                         </button>
                     </div>
                 </div>
             </div>
 
             {/* Mobile Navigation */}
-            <AnimatePresence>
-                {isOpen && (
-                    <motion.div
-                        initial={{ opacity: 0, height: 0 }}
-                        animate={{ opacity: 1, height: 'auto' }}
-                        exit={{ opacity: 0, height: 0 }}
-                        className="md:hidden bg-white border-t border-gray-200"
-                    >
-                        <div className="px-4 py-4 space-y-2">
-                            {navItems.map((item) => (
+            {isOpen && (
+                <motion.div
+                    initial={{ opacity: 0, height: 0 }}
+                    animate={{ opacity: 1, height: 'auto' }}
+                    exit={{ opacity: 0, height: 0 }}
+                    className="md:hidden bg-white border-t border-gray-100"
+                >
+                    <div className="px-4 py-4 space-y-2">
+                        {navigation.map((item) => {
+                            // Skip items that require connection if not connected
+                            if (item.requiresConnection && !isConnected) {
+                                return null
+                            }
+
+                            const Icon = item.icon
+
+                            return (
                                 <Link
-                                    key={item.href}
+                                    key={item.name}
                                     href={item.href}
                                     onClick={() => setIsOpen(false)}
-                                    className={`flex items-center space-x-3 px-4 py-3 rounded-lg transition-all duration-200 ${pathname === item.href
-                                        ? 'bg-purple-100 text-purple-700'
-                                        : 'text-gray-600 hover:text-purple-600 hover:bg-purple-50'
+                                    className={`flex items-center space-x-2 px-4 py-3 rounded-lg font-medium transition-all duration-200 ${isActive(item.href)
+                                        ? 'bg-blue-50 text-blue-700'
+                                        : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
                                         }`}
                                 >
-                                    <item.icon className="w-5 h-5" />
-                                    <span className="font-medium">{item.label}</span>
+                                    {Icon && <Icon className="w-4 h-4" />}
+                                    <span>{item.name}</span>
                                 </Link>
-                            ))}
+                            )
+                        })}
 
-                            <div className="pt-4 border-t border-gray-200">
-                                <ConnectKitButton />
-                            </div>
+                        {/* Mobile Connect Button */}
+                        <div className="pt-4 border-t border-gray-100">
+                            <ConnectKitButton />
                         </div>
-                    </motion.div>
-                )}
-            </AnimatePresence>
+                    </div>
+                </motion.div>
+            )}
         </nav>
     )
 }

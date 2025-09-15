@@ -1,6 +1,11 @@
+// utils/api.ts
 import toast from 'react-hot-toast';
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api';
+// Use production API URL in production
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL ||
+    (process.env.NODE_ENV === 'production'
+        ? 'https://somniaid.onrender.com/api'
+        : 'http://localhost:5000/api');
 
 // Add proper interfaces
 interface LeaderboardResponse {
@@ -30,6 +35,7 @@ interface ApiResponse<T = any> {
     pagination?: any;
     identities?: any;
     results?: any;
+    identity?: any;
 }
 
 class ApiClient {
@@ -37,6 +43,7 @@ class ApiClient {
 
     constructor(baseUrl: string) {
         this.baseUrl = baseUrl;
+        console.log('API Client initialized with baseURL:', this.baseUrl);
     }
 
     private async request<T>(
@@ -56,13 +63,15 @@ class ApiClient {
                 ...options,
             };
 
-            // Add auth token if available
-            const token = localStorage.getItem('auth_token');
-            if (token) {
-                config.headers = {
-                    ...config.headers,
-                    Authorization: `Bearer ${token}`,
-                };
+            // Add auth token if available (only in browser)
+            if (typeof window !== 'undefined') {
+                const token = localStorage.getItem('auth_token');
+                if (token) {
+                    config.headers = {
+                        ...config.headers,
+                        Authorization: `Bearer ${token}`,
+                    };
+                }
             }
 
             const response = await fetch(url, config);
@@ -93,7 +102,7 @@ class ApiClient {
             if (error.name === 'TypeError' && error.message.includes('fetch')) {
                 return {
                     success: false,
-                    error: 'Unable to connect to server. Please make sure the backend is running.',
+                    error: 'Unable to connect to server. Please check your internet connection and try again.',
                 };
             }
 
@@ -139,6 +148,20 @@ class ApiClient {
         return this.request(`/identity/${tokenId}`);
     }
 
+    // FIXED: Match backend /create endpoint and parameters
+    async createIdentity(username: string, primarySkill: string, profileData?: string) {
+        console.log('Creating identity with:', { username, primarySkill });
+
+        return this.request('/identity/create', {  // FIXED: Use /create endpoint
+            method: 'POST',
+            body: JSON.stringify({
+                username: username.trim(),
+                primarySkill: primarySkill.trim(),
+                bio: profileData || ''  // FIXED: Send as 'bio' parameter that backend expects
+            }),
+        });
+    }
+
     async createIdentityEnhanced(identityData: any) {
         return this.request('/identity/create-enhanced', {
             method: 'POST',
@@ -146,19 +169,19 @@ class ApiClient {
         });
     }
 
-    async createIdentity(username: string, primarySkill: string, bio?: string) {
-        console.log('Creating identity with:', { username, primarySkill, bio });
-        return this.request('/identity/create', {
-            method: 'POST',
-            body: JSON.stringify({ username, primarySkill, bio }),
-        });
-    }
-
     async updateIdentity(tokenId: number, data: any) {
         return this.request(`/identity/${tokenId}`, {
             method: 'PUT',
             body: JSON.stringify(data),
-        });
+        })
+    }
+
+    async getPortfolio(address: string) {
+        return this.request(`/portfolio/${address}`)
+    }
+
+    async getMarketplace(page = 1, limit = 20) {
+        return this.request(`/marketplace?page=${page}&limit=${limit}`)
     }
 
     async searchIdentities(query: string) {
@@ -174,10 +197,10 @@ class ApiClient {
     }
 
     async addAchievement(tokenId: number, achievement: any) {
-        return this.request(`/achievements/${tokenId}/add`, {
+        return this.request('/achievements/add', {
             method: 'POST',
-            body: JSON.stringify(achievement),
-        });
+            body: JSON.stringify({ tokenId, achievement }),
+        })
     }
 
     async createAchievement(data: any) {
@@ -195,12 +218,24 @@ class ApiClient {
         return this.request(`/achievements/leaderboard?page=${page}&limit=${limit}`);
     }
 
-    // Utility method to test connection
+    // Health check endpoints
     async testConnection() {
         try {
-            const response = await fetch(`${this.baseUrl.replace('/api', '')}/health`);
+            // Try the API health endpoint first
+            const apiHealth = await this.request('/test');
+            if (apiHealth.success) {
+                return apiHealth;
+            }
+
+            // Fallback to main health endpoint
+            const baseUrl = this.baseUrl.replace('/api', '');
+            const response = await fetch(`${baseUrl}/health`);
+            if (!response.ok) {
+                throw new Error(`Health check failed: ${response.status}`);
+            }
             return await response.json();
         } catch (error) {
+            console.error('Connection test failed:', error);
             throw new Error('Backend server is not accessible');
         }
     }

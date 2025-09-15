@@ -1,4 +1,5 @@
 require("@nomicfoundation/hardhat-toolbox");
+require("@nomicfoundation/hardhat-verify");
 require("dotenv").config();
 
 module.exports = {
@@ -25,7 +26,19 @@ module.exports = {
         }
     },
     etherscan: {
-        apiKey: process.env.ETHERSCAN_API_KEY || "your-api-key"
+        apiKey: {
+            somnia: "no-api-key-needed" // Placeholder for custom networks
+        },
+        customChains: [
+            {
+                network: "somnia",
+                chainId: 50312,
+                urls: {
+                    apiURL: "https://shannon-explorer.somnia.network/api",
+                    browserURL: "https://shannon-explorer.somnia.network"
+                }
+            }
+        ]
     },
     gasReporter: {
         enabled: process.env.REPORT_GAS !== undefined,

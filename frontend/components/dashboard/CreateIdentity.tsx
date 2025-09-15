@@ -1,17 +1,15 @@
 'use client'
 
-import { useState } from 'react'
-import { useAccount, useWriteContract, useWaitForTransactionReceipt } from 'wagmi'
+import { useState, useEffect } from 'react'
+import { useAccount, useWriteContract, useWaitForTransactionReceipt, useReadContract } from 'wagmi'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
     User, Code, Award, Target, ExternalLink, Plus, X, Calendar,
     Trophy, Star, Zap, CheckCircle
 } from 'lucide-react'
-import { CONTRACT_ABI } from '@/utils/contract'
+import { CONTRACT_ABI, CONTRACT_ADDRESS } from '@/utils/contract'
 import { api } from '@/utils/api'
 import toast from 'react-hot-toast'
-
-const CONTRACT_ADDRESS = process.env.NEXT_PUBLIC_CONTRACT_ADDRESS as `0x${string}`
 
 interface Achievement {
     title: string
@@ -75,12 +73,41 @@ export function CreateIdentity({ onIdentityCreated, isCreating = false }: Create
     })
 
     const [loading, setLoading] = useState(false)
+    const [pendingIdentityData, setPendingIdentityData] = useState<any>(null)
 
     const { address, isConnected } = useAccount()
     const { writeContract, data: hash, isPending } = useWriteContract()
     const { isLoading: isConfirming, isSuccess: isConfirmed } = useWaitForTransactionReceipt({
         hash,
     })
+
+    // Add these hooks for reading contract data
+    const { data: hasExistingIdentity } = useReadContract({
+        address: CONTRACT_ADDRESS,
+        abi: CONTRACT_ABI,
+        functionName: 'hasIdentity',
+        args: address ? [address] : undefined,
+        query: {
+            enabled: !!address && !!CONTRACT_ADDRESS
+        }
+    })
+
+    const { data: isUsernameUsed } = useReadContract({
+        address: CONTRACT_ADDRESS,
+        abi: CONTRACT_ABI,
+        functionName: 'usedUsernames',
+        args: username ? [username.trim()] : undefined,
+        query: {
+            enabled: !!username && !!CONTRACT_ADDRESS
+        }
+    })
+
+    // Watch for transaction confirmation to save to database
+    useEffect(() => {
+        if (isConfirmed && hash && pendingIdentityData) {
+            saveToDatabase(pendingIdentityData, hash)
+        }
+    }, [isConfirmed, hash, pendingIdentityData])
 
     const addSkill = () => {
         if (newSkill.trim() && !skills.includes(newSkill.trim())) {
@@ -121,34 +148,12 @@ export function CreateIdentity({ onIdentityCreated, isCreating = false }: Create
         return Math.round(price * 100) / 100
     }
 
-    const handleSubmit = async (e: React.FormEvent) => {
-        e.preventDefault()
-
-        if (!isConnected || !address) {
-            toast.error('Please connect your wallet')
-            return
-        }
-
+    const saveToDatabase = async (identityData: any, txHash: string) => {
         try {
-            setLoading(true)
-
-            const tokenId = Math.floor(Date.now() / 1000)
-            const currentPrice = calculatePrice()
-
-            toast.loading('Creating your SomniaID...')
-
-            // Create comprehensive identity data
-            const identityData = {
-                tokenId,
-                username,
-                primarySkill,
-                experience,
-                ownerAddress: address,
-                reputationScore: 100 + achievements.length * 10,
-                skillLevel: experience === 'beginner' ? 1 : experience === 'intermediate' ? 2 : experience === 'advanced' ? 3 : 4,
-                achievementCount: achievements.length,
-                isVerified: false,
-                currentPrice,
+            // FIXED: Structure data properly for backend parsing
+            const backendData = {
+                ...identityData,
+                txHash,
                 profile: {
                     bio,
                     skills,
@@ -170,38 +175,122 @@ export function CreateIdentity({ onIdentityCreated, isCreating = false }: Create
                 }
             }
 
-            // Save to database first
+            console.log('Sending to backend:', backendData)
+
             const response = await api.createIdentity(
-                username,
-                primarySkill,
-                JSON.stringify(identityData)
+                username.trim(),
+                primarySkill.trim(),
+                JSON.stringify(backendData) // Send structured data as bio parameter
             )
 
             if (response.success) {
-                // Then create blockchain transaction
-                writeContract({
-                    address: CONTRACT_ADDRESS,
-                    abi: CONTRACT_ABI,
-                    functionName: 'createIdentity',
-                    args: [username, primarySkill],
-                })
-
+                toast.success('SomniaID created successfully!')
+                console.log('Backend response:', response)
                 onIdentityCreated({
                     ...identityData,
-                    txHash: hash || 'pending',
+                    txHash,
                     lastUpdate: Date.now()
                 })
-
-                toast.success(`SomniaID created! Value: ${currentPrice} STT`)
             } else {
-                throw new Error(response.error || 'Failed to create identity')
+                throw new Error(response.error || 'Failed to save identity')
             }
-
         } catch (error: any) {
-            console.error('Error creating identity:', error)
-            toast.error(error?.message || 'Failed to create identity')
+            console.error('Error saving identity:', error)
+            toast.error(error?.message || 'Failed to save identity to database')
         } finally {
             setLoading(false)
+            setPendingIdentityData(null)
+        }
+    }
+
+    // Update your handleSubmit function
+    const handleSubmit = async (e: React.FormEvent) => {
+        e.preventDefault()
+
+        if (!isConnected || !address) {
+            toast.error('Please connect your wallet')
+            return
+        }
+
+        if (!username.trim() || !primarySkill.trim()) {
+            toast.error('Please fill in all required fields')
+            return
+        }
+
+        // Check validations using the hook data
+        if (hasExistingIdentity) {
+            toast.error('You already have an identity! Each address can only have one identity.')
+            return
+        }
+
+        if (isUsernameUsed) {
+            toast.error('Username is already taken. Please choose a different one.')
+            return
+        }
+
+        try {
+            setLoading(true)
+
+            const tokenId = Math.floor(Date.now() / 1000)
+            const estimatedPrice = calculatePrice()
+
+            const identityData = {
+                tokenId,
+                username,
+                primarySkill,
+                experience,
+                ownerAddress: address,
+                reputationScore: 100 + achievements.length * 10,
+                skillLevel: experience === 'beginner' ? 1 : experience === 'intermediate' ? 2 : experience === 'advanced' ? 3 : 4,
+                achievementCount: achievements.length,
+                isVerified: false,
+                currentPrice: estimatedPrice,
+                profile: {
+                    bio,
+                    skills,
+                    achievements: achievements.map((a, index) => ({
+                        id: `ach_${Date.now()}_${index}`,
+                        ...a,
+                        points: a.category === 'hackathon' ? 50 : a.category === 'certification' ? 30 : 20,
+                        valueImpact: a.category === 'hackathon' ? 15 : 10,
+                        dateAchieved: new Date(a.dateAchieved)
+                    })),
+                    goals: goals.map((g, index) => ({
+                        id: `goal_${Date.now()}_${index}`,
+                        ...g,
+                        targetDate: new Date(g.targetDate),
+                        progress: 0,
+                        valueImpact: g.priority === 'high' ? 10 : g.priority === 'medium' ? 5 : 2
+                    })),
+                    socialLinks
+                }
+            }
+
+            setPendingIdentityData(identityData)
+
+            toast.loading('Please confirm the transaction in your wallet...')
+
+            writeContract({
+                address: CONTRACT_ADDRESS,
+                abi: CONTRACT_ABI,
+                functionName: 'createIdentity',
+                args: [username.trim(), primarySkill.trim()],
+            })
+
+        } catch (error: any) {
+            console.error('Error in handleSubmit:', error)
+            toast.dismiss()
+
+            if (error.message?.includes('Proposal expired')) {
+                toast.error('Wallet connection expired. Please reconnect and try again.')
+            } else if (error.message?.includes('rejected')) {
+                toast.error('Transaction cancelled by user')
+            } else {
+                toast.error(`Transaction failed: ${error.message || 'Unknown error'}`)
+            }
+
+            setLoading(false)
+            setPendingIdentityData(null)
         }
     }
 
@@ -663,6 +752,57 @@ export function CreateIdentity({ onIdentityCreated, isCreating = false }: Create
                                     />
                                 </div>
                             </div>
+
+                            {/* Debug Test Button */}
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    console.log('=== FRONTEND DATA COLLECTION TEST ===')
+                                    console.log('1. Username:', username)
+                                    console.log('2. Primary Skill:', primarySkill)
+                                    console.log('3. Experience:', experience)
+                                    console.log('4. Bio:', bio)
+                                    console.log('5. Skills:', skills)
+                                    console.log('6. Achievements:', achievements)
+                                    console.log('7. Goals:', goals)
+                                    console.log('8. Social Links:', socialLinks)
+
+                                    const testData = {
+                                        username,
+                                        primarySkill,
+                                        experience,
+                                        ownerAddress: address,
+                                        profile: {
+                                            bio,
+                                            skills,
+                                            achievements: achievements.map((a, index) => ({
+                                                id: `ach_${Date.now()}_${index}`,
+                                                ...a,
+                                                points: a.category === 'hackathon' ? 50 : a.category === 'certification' ? 30 : 20,
+                                                valueImpact: a.category === 'hackathon' ? 15 : 10,
+                                                dateAchieved: new Date(a.dateAchieved)
+                                            })),
+                                            goals: goals.map((g, index) => ({
+                                                id: `goal_${Date.now()}_${index}`,
+                                                ...g,
+                                                targetDate: new Date(g.targetDate),
+                                                progress: 0,
+                                                valueImpact: g.priority === 'high' ? 10 : g.priority === 'medium' ? 5 : 2
+                                            })),
+                                            socialLinks
+                                        }
+                                    }
+
+                                    console.log('9. Structured data that will be sent:', testData)
+                                    console.log('10. JSON string length:', JSON.stringify(testData).length)
+                                    console.log('=== END TEST ===')
+
+                                    toast.success(`Data collected: ${achievements.length} achievements, ${goals.length} goals, ${skills.length} skills`)
+                                }}
+                                className="w-full px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 mb-4"
+                            >
+                                🔍 Test Data Collection
+                            </button>
                         </motion.div>
                     )}
                 </AnimatePresence>
@@ -695,7 +835,11 @@ export function CreateIdentity({ onIdentityCreated, isCreating = false }: Create
                             {loading || isPending || isConfirming ? (
                                 <>
                                     <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                                    <span>Creating...</span>
+                                    <span>
+                                        {isPending ? 'Confirm in Wallet...' :
+                                            isConfirming ? 'Processing Transaction...' :
+                                                'Creating...'}
+                                    </span>
                                 </>
                             ) : (
                                 <>
