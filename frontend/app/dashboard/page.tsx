@@ -159,9 +159,9 @@ export default function DashboardPage() {
             await writeContract({
                 address: CONTRACT_ADDRESS,
                 abi: CONTRACT_ABI,
-                functionName: 'approve',
-                args: [CONTRACT_ADDRESS, BigInt(identity!.tokenId)],
-                gas: BigInt(100000)
+                functionName: 'setApprovalForAll',
+                args: [CONTRACT_ADDRESS, true],
+                gas: BigInt(120000)
             })
 
         } catch (error: any) {
@@ -513,7 +513,7 @@ export default function DashboardPage() {
                                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
                                 />
                                 <p className="text-xs text-gray-500 mt-1">
-                                    ~${(parseFloat(listPrice || '0') * 0.1).toFixed(2)} USD
+                                    ~${(parseFloat(listPrice || '0') * 1.5).toFixed(4)} USD
                                 </p>
                             </div>
 
