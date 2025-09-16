@@ -53,6 +53,7 @@ export default function DashboardPage() {
     const [showListModal, setShowListModal] = useState(false)
     const [listPrice, setListPrice] = useState('')
     const [isListing, setIsListing] = useState(false)
+    const [isApproving, setIsApproving] = useState(false)
 
     const { writeContract, data: hash, error, isPending } = useWriteContract()
 
@@ -70,21 +71,28 @@ export default function DashboardPage() {
 
     useEffect(() => {
         if (isConfirmed && hash) {
-            toast.success('Identity created successfully!')
-            checkUserIdentity()
-        }
-    }, [isConfirmed, hash])
+            if (isApproving) {
+                // Approval transaction confirmed, now proceed to listing
+                toast.dismiss()
+                toast.success('NFT approved! Now listing...')
+                setIsApproving(false)
 
-    // Add this useEffect to handle listing confirmation
-    useEffect(() => {
-        if (isConfirmed && isListing) {
-            toast.dismiss()
-            toast.success('Identity listed for sale!')
-            setIsListing(false)
-            setShowListModal(false)
-            setListPrice('')
+                // Proceed with actual listing
+                performListing()
+            } else if (isListing && !isApproving) {
+                // Listing transaction confirmed
+                toast.dismiss()
+                toast.success('Identity listed for sale!')
+                setIsListing(false)
+                setShowListModal(false)
+                setListPrice('')
+            } else if (!isApproving && !isListing) {
+                // Identity creation confirmed
+                toast.success('Identity created successfully!')
+                checkUserIdentity()
+            }
         }
-    }, [isConfirmed, isListing])
+    }, [isConfirmed, hash, isApproving, isListing])
 
     const checkUserIdentity = async () => {
         try {
@@ -134,7 +142,7 @@ export default function DashboardPage() {
         toast.success('Identity created successfully!')
     }
 
-    // Add this function after your existing functions
+    // Improved listing function with approval step
     const handleListForSale = async () => {
         if (!listPrice || parseFloat(listPrice) <= 0) {
             toast.error('Please enter a valid price')
@@ -144,17 +152,51 @@ export default function DashboardPage() {
         try {
             setIsListing(true)
 
-            writeContract({
+            // Step 1: First approve the marketplace contract to manage your NFT
+            toast.loading('Step 1/2: Approving NFT for marketplace...')
+            setIsApproving(true)
+
+            await writeContract({
+                address: CONTRACT_ADDRESS,
+                abi: CONTRACT_ABI,
+                functionName: 'approve',
+                args: [CONTRACT_ADDRESS, BigInt(identity!.tokenId)],
+                gas: BigInt(100000)
+            })
+
+        } catch (error: any) {
+            console.error('Transaction error:', error)
+            setIsListing(false)
+            setIsApproving(false)
+            toast.dismiss()
+
+            if (error.message?.includes('User rejected')) {
+                toast.error('Transaction cancelled by user')
+            } else if (error.message?.includes('insufficient funds')) {
+                toast.error('Insufficient STT for gas fees')
+            } else {
+                toast.error(`Transaction failed: ${error.shortMessage || error.message}`)
+            }
+        }
+    }
+
+    // Function for the actual listing after approval
+    const performListing = async () => {
+        try {
+            toast.loading('Step 2/2: Listing NFT for sale...')
+
+            await writeContract({
                 address: CONTRACT_ADDRESS,
                 abi: CONTRACT_ABI,
                 functionName: 'listIdentity',
-                args: [BigInt(identity!.tokenId), parseEther(listPrice)]
+                args: [BigInt(identity!.tokenId), parseEther(listPrice)],
+                gas: BigInt(150000) // Increased gas limit
             })
 
-            toast.loading('Listing your identity for sale...')
         } catch (error: any) {
             console.error('Listing error:', error)
-            toast.error('Failed to list identity')
+            toast.dismiss()
+            toast.error(`Listing failed: ${error.shortMessage || error.message}`)
             setIsListing(false)
         }
     }
@@ -493,7 +535,7 @@ export default function DashboardPage() {
                                     disabled={isListing || !listPrice}
                                     className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
                                 >
-                                    {isListing ? 'Listing...' : 'List for Sale'}
+                                    {isApproving ? 'Approving...' : isListing ? 'Listing...' : 'Approve & List'}
                                 </button>
                             </div>
                         </div>
