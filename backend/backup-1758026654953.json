@@ -1,0 +1,367 @@
+[
+  {
+    "_id": "68c7048fa15108e4e8720f86",
+    "tokenId": 1757873295,
+    "username": "Ritik",
+    "ownerAddress": "0xCAcDf9fBE06866ed3AFF57e0B7664447Afcb0f71",
+    "primarySkill": "Blockchain Architecture",
+    "experience": "beginner",
+    "reputationScore": 100,
+    "skillLevel": 1,
+    "achievementCount": 0,
+    "isVerified": false,
+    "nftBasePrice": 10,
+    "currentPrice": 10,
+    "priceHistory": [
+      {
+        "price": 10,
+        "date": "2025-09-14T18:08:15.948Z",
+        "trigger": "Initial creation",
+        "_id": "68c7048fa15108e4e8720f87"
+      }
+    ],
+    "profile": {
+      "bio": "",
+      "skills": [],
+      "achievements": [],
+      "goals": [],
+      "socialLinks": {
+        "twitter": "",
+        "github": "",
+        "linkedin": "",
+        "website": ""
+      },
+      "education": [],
+      "workExperience": []
+    },
+    "profileViews": 0,
+    "followers": [],
+    "following": [],
+    "lastUpdate": 1757873295948,
+    "lastMetadataUpdate": 0,
+    "lastKnownReputation": 0,
+    "createdAt": "2025-09-14T18:08:15.963Z",
+    "updatedAt": "2025-09-14T18:08:15.963Z",
+    "__v": 0
+  },
+  {
+    "_id": "68c7057ea15108e4e8720fa4",
+    "tokenId": 2,
+    "username": "Ritik ",
+    "ownerAddress": "0x5029030704A923CAAaF97Bf1f308E2a081CaAd95",
+    "primarySkill": "NFT Creation",
+    "experience": "expert",
+    "reputationScore": 100,
+    "skillLevel": 1,
+    "achievementCount": 0,
+    "isVerified": false,
+    "nftBasePrice": 10,
+    "currentPrice": 20,
+    "priceHistory": [
+      {
+        "price": 20,
+        "date": "2025-09-14T18:12:14.176Z",
+        "trigger": "Initial creation",
+        "_id": "68c7057ea15108e4e8720fa5"
+      }
+    ],
+    "profile": {
+      "bio": "",
+      "skills": [],
+      "achievements": [],
+      "goals": [],
+      "socialLinks": {
+        "twitter": "",
+        "github": "",
+        "linkedin": "",
+        "website": ""
+      },
+      "education": [],
+      "workExperience": []
+    },
+    "profileViews": 0,
+    "followers": [],
+    "following": [],
+    "lastUpdate": 1757980678,
+    "lastMetadataUpdate": 1758025555973,
+    "lastKnownReputation": 0,
+    "createdAt": "2025-09-14T18:12:14.181Z",
+    "updatedAt": "2025-09-16T12:25:55.974Z",
+    "__v": 0
+  },
+  {
+    "_id": "68c719623522747c5833a862",
+    "tokenId": 1757878626,
+    "username": "Prateek ",
+    "ownerAddress": "0xDf2cBF215ca95268226949897408688c50BFcBBF",
+    "primarySkill": "Smart Contract Development",
+    "experience": "expert",
+    "reputationScore": 100,
+    "skillLevel": 4,
+    "achievementCount": 0,
+    "isVerified": false,
+    "nftBasePrice": 10,
+    "currentPrice": 20,
+    "priceHistory": [
+      {
+        "price": 20,
+        "date": "2025-09-14T19:37:06.189Z",
+        "trigger": "Initial creation",
+        "_id": "68c719623522747c5833a863"
+      }
+    ],
+    "profile": {
+      "bio": "",
+      "skills": [],
+      "achievements": [],
+      "goals": [],
+      "socialLinks": {
+        "twitter": "",
+        "github": "",
+        "linkedin": "",
+        "website": ""
+      },
+      "education": [],
+      "workExperience": []
+    },
+    "profileViews": 0,
+    "followers": [],
+    "following": [],
+    "lastUpdate": 1757878626189,
+    "lastMetadataUpdate": 0,
+    "lastKnownReputation": 0,
+    "createdAt": "2025-09-14T19:37:06.301Z",
+    "updatedAt": "2025-09-14T19:37:06.301Z",
+    "__v": 0
+  },
+  {
+    "_id": "68c81ea01f147e6768b63f5b",
+    "tokenId": 1757945504,
+    "username": "Srini",
+    "ownerAddress": "0x04f16c490305Dc0254d98a1b08A9B542E32cB7fC",
+    "primarySkill": "Frontend Development",
+    "experience": "beginner",
+    "reputationScore": 100,
+    "skillLevel": 1,
+    "achievementCount": 0,
+    "isVerified": false,
+    "nftBasePrice": 10,
+    "currentPrice": 10,
+    "priceHistory": [
+      {
+        "price": 10,
+        "date": "2025-09-15T14:11:44.940Z",
+        "trigger": "Initial creation",
+        "_id": "68c81ea01f147e6768b63f5c"
+      }
+    ],
+    "profile": {
+      "bio": "",
+      "skills": [],
+      "achievements": [],
+      "goals": [],
+      "socialLinks": {
+        "twitter": "",
+        "github": "",
+        "linkedin": "",
+        "website": ""
+      },
+      "education": [],
+      "workExperience": []
+    },
+    "profileViews": 0,
+    "followers": [],
+    "following": [],
+    "txHash": "0x855477b439006cd51b2114b9721a2c78986a199e7e621355ee1cde4db0087229",
+    "lastUpdate": 1757945504940,
+    "lastMetadataUpdate": 0,
+    "lastKnownReputation": 0,
+    "createdAt": "2025-09-15T14:11:44.940Z",
+    "updatedAt": "2025-09-15T14:11:44.940Z",
+    "__v": 0
+  },
+  {
+    "_id": "68c8948ec17908e6af9764ae",
+    "tokenId": 1,
+    "username": "SomiNFT",
+    "ownerAddress": "0x6FFb025F3E1FF7F4081B9522Ab2128dB888b1287",
+    "primarySkill": "NFT Creation",
+    "experience": "expert",
+    "reputationScore": 100,
+    "skillLevel": 1,
+    "achievementCount": 0,
+    "isVerified": false,
+    "nftBasePrice": 10,
+    "currentPrice": 20,
+    "priceHistory": [
+      {
+        "price": 20,
+        "date": "2025-09-15T22:34:54.967Z",
+        "trigger": "Blockchain confirmed creation",
+        "_id": "68c8948fc17908e6af9764af"
+      }
+    ],
+    "profile": {
+      "bio": "",
+      "skills": [],
+      "achievements": [],
+      "goals": [],
+      "socialLinks": {
+        "twitter": "",
+        "github": "",
+        "linkedin": "",
+        "website": ""
+      },
+      "education": [],
+      "workExperience": []
+    },
+    "profileViews": 0,
+    "followers": [],
+    "following": [],
+    "txHash": "0x622819121fd1b1bf30027ffa6658bf8d641e6494df962f9ea6e80c6d8653898a",
+    "lastUpdate": 1757975693,
+    "lastMetadataUpdate": 1758025556032,
+    "lastKnownReputation": 0,
+    "createdAt": "2025-09-15T22:34:54.967Z",
+    "updatedAt": "2025-09-16T12:25:56.034Z",
+    "__v": 0
+  },
+  {
+    "_id": "68c8b70c73a5aba9f8cf08fb",
+    "tokenId": 3,
+    "username": "anumukul",
+    "ownerAddress": "0xF00b3321E87d0CFABe761B18A84333537e97E055",
+    "primarySkill": "Smart Contract Development",
+    "experience": "beginner",
+    "reputationScore": 100,
+    "skillLevel": 1,
+    "achievementCount": 0,
+    "isVerified": false,
+    "nftBasePrice": 10,
+    "currentPrice": 10,
+    "priceHistory": [
+      {
+        "price": 10,
+        "date": "2025-09-16T01:02:04.974Z",
+        "trigger": "Blockchain confirmed creation",
+        "_id": "68c8b70c73a5aba9f8cf08fc"
+      }
+    ],
+    "profile": {
+      "bio": "",
+      "skills": [],
+      "achievements": [],
+      "goals": [],
+      "socialLinks": {
+        "twitter": "",
+        "github": "",
+        "linkedin": "",
+        "website": ""
+      },
+      "education": [],
+      "workExperience": []
+    },
+    "profileViews": 0,
+    "followers": [],
+    "following": [],
+    "txHash": "0xba62c269ddd6145eb390b9d6683b8524cca93d428fbbc08c0b494cb123dac62e",
+    "lastUpdate": 1757984523,
+    "lastMetadataUpdate": 1758025556076,
+    "lastKnownReputation": 0,
+    "createdAt": "2025-09-16T01:02:04.974Z",
+    "updatedAt": "2025-09-16T12:25:56.076Z",
+    "__v": 0
+  },
+  {
+    "_id": "68c8bee891781406b70c6cbc",
+    "tokenId": 4,
+    "username": "joy",
+    "ownerAddress": "0x8845A1b73cb114292fBC8A4BF8Ce4807dc267647",
+    "primarySkill": "NFT Creation",
+    "experience": "expert",
+    "reputationScore": 100,
+    "skillLevel": 1,
+    "achievementCount": 0,
+    "isVerified": false,
+    "nftBasePrice": 10,
+    "currentPrice": 20,
+    "priceHistory": [
+      {
+        "price": 20,
+        "date": "2025-09-16T01:35:36.083Z",
+        "trigger": "Blockchain confirmed creation",
+        "_id": "68c8bee891781406b70c6cbd"
+      }
+    ],
+    "profile": {
+      "bio": "",
+      "skills": [],
+      "achievements": [],
+      "goals": [],
+      "socialLinks": {
+        "twitter": "",
+        "github": "",
+        "linkedin": "",
+        "website": ""
+      },
+      "education": [],
+      "workExperience": []
+    },
+    "profileViews": 0,
+    "followers": [],
+    "following": [],
+    "txHash": "0xf05970543086a1b654089d69e9983e0a7ee8a4243d28f3395368bd254ea424aa",
+    "lastUpdate": 1757986534,
+    "lastMetadataUpdate": 1758025556105,
+    "lastKnownReputation": 0,
+    "createdAt": "2025-09-16T01:35:36.083Z",
+    "updatedAt": "2025-09-16T12:25:56.105Z",
+    "__v": 0
+  },
+  {
+    "_id": "68c8d6730ddc44dc21e5ff3f",
+    "tokenId": 5,
+    "username": "Sam",
+    "ownerAddress": "0x6f5A78D115067B0E18B0b3045F5950a4D3C3e60c",
+    "primarySkill": "DeFi Protocol Design",
+    "experience": "expert",
+    "reputationScore": 100,
+    "skillLevel": 1,
+    "achievementCount": 0,
+    "isVerified": false,
+    "nftBasePrice": 10,
+    "currentPrice": 20,
+    "priceHistory": [
+      {
+        "price": 20,
+        "date": "2025-09-16T03:16:03.177Z",
+        "trigger": "Blockchain confirmed creation",
+        "_id": "68c8d6730ddc44dc21e5ff40"
+      }
+    ],
+    "profile": {
+      "bio": "",
+      "skills": [],
+      "achievements": [],
+      "goals": [],
+      "socialLinks": {
+        "twitter": "",
+        "github": "",
+        "linkedin": "",
+        "website": ""
+      },
+      "education": [],
+      "workExperience": []
+    },
+    "profileViews": 0,
+    "followers": [],
+    "following": [],
+    "txHash": "0x802e368eac676f05f8cc42b1605ef91a1369e321d97cf9246880e479b19eb902",
+    "lastUpdate": 1757992561,
+    "lastMetadataUpdate": 1758025556132,
+    "lastKnownReputation": 0,
+    "createdAt": "2025-09-16T03:16:03.177Z",
+    "updatedAt": "2025-09-16T12:25:56.132Z",
+    "__v": 0
+  }
+]

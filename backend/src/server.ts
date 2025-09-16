@@ -1,4 +1,3 @@
-// Load environment variables first
 import dotenv from 'dotenv';
 dotenv.config();
 
@@ -13,22 +12,23 @@ import authRoutes from './routes/auth';
 import identityRoutes from './routes/identity';
 import achievementRoutes from './routes/achievements';
 
-// Import all new services
+// Import all services
 import RealtimeService from './services/realtimeService';
 import DynamicNFTService from './services/dynamicNFTService';
 import AchievementService from './services/achievementService';
 import VerificationService from './services/verificationService';
+import blockchainSync from './services/blockchain-sync';
 
 const app = express();
 const server = createServer(app);
 
-// FIXED: Improved CORS configuration for production
+// CORS configuration
 const allowedOrigins = [
     "http://localhost:3000",
     "http://localhost:3001",
     "https://somniaid.vercel.app",
-    "https://somniaid-git-main-your-username.vercel.app", // Git branch deployments
-    /^https:\/\/somniaid-.*\.vercel\.app$/, // All preview deployments
+    "https://somniaid-git-main-your-username.vercel.app",
+    /^https:\/\/somniaid-.*\.vercel\.app$/,
 ];
 
 const io = new Server(server, {
@@ -45,18 +45,14 @@ let dynamicNFTService: DynamicNFTService;
 let achievementService: AchievementService;
 let verificationService: VerificationService;
 
-// FIXED: Enhanced CORS configuration with better origin handling
 app.use(cors({
     origin: (origin, callback) => {
-        // Allow requests with no origin (mobile apps, Postman, etc.)
         if (!origin) return callback(null, true);
 
-        // Check against allowed origins
         const isAllowed = allowedOrigins.some(allowedOrigin => {
             if (typeof allowedOrigin === 'string') {
                 return origin === allowedOrigin;
             }
-            // Handle regex patterns
             return allowedOrigin.test(origin);
         });
 
@@ -72,7 +68,6 @@ app.use(cors({
     credentials: true
 }));
 
-// Add preflight handling
 app.options('*', cors());
 
 app.use(helmet({
@@ -80,21 +75,18 @@ app.use(helmet({
     contentSecurityPolicy: false
 }));
 
-// Adjusted rate limiting for production
 const limiter = rateLimit({
-    windowMs: 15 * 60 * 1000, // 15 minutes
-    max: process.env.NODE_ENV === 'production' ? 100 : 1000, // Stricter in production
+    windowMs: 15 * 60 * 1000,
+    max: process.env.NODE_ENV === 'production' ? 100 : 1000,
     message: 'Too many requests, please try again later',
     standardHeaders: true,
     legacyHeaders: false,
 });
 app.use(limiter);
 
-// Body parsing middleware
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
 
-// FIXED: Enhanced request logging
 app.use((req, res, next) => {
     const timestamp = new Date().toISOString();
     const origin = req.get('Origin') || 'no-origin';
@@ -109,6 +101,7 @@ app.use((req: any, res, next) => {
     req.dynamicNFTService = dynamicNFTService;
     req.achievementService = achievementService;
     req.verificationService = verificationService;
+    req.blockchainSync = blockchainSync;
     next();
 });
 
@@ -116,6 +109,70 @@ app.use((req: any, res, next) => {
 app.use('/api/auth', authRoutes);
 app.use('/api/identity', identityRoutes);
 app.use('/api/achievements', achievementRoutes);
+
+// Blockchain sync endpoints
+app.get('/api/blockchain/status', (req, res) => {
+    try {
+        const status = blockchainSync.getServiceStatus();
+        res.json({
+            success: true,
+            data: status,
+            message: status.ready ? 'Blockchain sync service is ready' : 'Blockchain sync service not ready'
+        });
+    } catch (error: any) {
+        console.error('Blockchain status error:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Failed to get blockchain status',
+            details: error.message
+        });
+    }
+});
+
+app.post('/api/blockchain/reinitialize', async (req, res) => {
+    try {
+        console.log('🔄 Manual blockchain service reinitialization requested');
+        const success = await blockchainSync.reinitialize();
+
+        if (success) {
+            res.json({
+                success: true,
+                message: 'Blockchain sync service reinitialized successfully'
+            });
+        } else {
+            res.status(500).json({
+                success: false,
+                error: 'Failed to reinitialize blockchain sync service'
+            });
+        }
+    } catch (error: any) {
+        console.error('Blockchain reinit error:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Reinitialization failed',
+            details: error.message
+        });
+    }
+});
+
+app.post('/api/blockchain/sync-all', async (req, res) => {
+    try {
+        console.log('🔄 Manual full blockchain sync requested');
+        await blockchainSync.syncAllIdentities();
+
+        res.json({
+            success: true,
+            message: 'Full blockchain sync completed successfully'
+        });
+    } catch (error: any) {
+        console.error('Full sync error:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Full blockchain sync failed',
+            details: error.message
+        });
+    }
+});
 
 // Service endpoints
 app.get('/api/analytics/realtime', async (req, res) => {
@@ -175,16 +232,37 @@ app.post('/api/external/verify', async (req, res) => {
 app.get('/api/sdk/identity/:address', async (req, res) => {
     try {
         const { address } = req.params;
-        // Implementation for SDK identity lookup
-        res.json({ success: true, data: null, message: 'SDK endpoint ready' });
-    } catch (error) {
+
+        const blockchainIdentity = await blockchainSync.getBlockchainIdentity(address);
+
+        if (blockchainIdentity) {
+            res.json({
+                success: true,
+                data: blockchainIdentity,
+                source: 'blockchain',
+                message: 'Identity retrieved from blockchain'
+            });
+        } else {
+            res.json({
+                success: false,
+                data: null,
+                message: 'No identity found for this address'
+            });
+        }
+    } catch (error: any) {
         console.error('SDK error:', error);
-        res.status(500).json({ success: false, error: 'SDK request failed' });
+        res.status(500).json({
+            success: false,
+            error: 'SDK request failed',
+            details: error.message
+        });
     }
 });
 
-// FIXED: Enhanced health check endpoint
+// Enhanced health check endpoint
 app.get('/health', (req, res) => {
+    const blockchainStatus = blockchainSync.getServiceStatus();
+
     const health = {
         status: 'OK',
         timestamp: new Date().toISOString(),
@@ -194,33 +272,52 @@ app.get('/health', (req, res) => {
             realtime: realtimeService ? 'Active' : 'Inactive',
             nftService: dynamicNFTService ? 'Active' : 'Inactive',
             achievements: achievementService ? 'Active' : 'Inactive',
-            verification: verificationService ? 'Active' : 'Inactive'
+            verification: verificationService ? 'Active' : 'Inactive',
+            blockchainSync: blockchainStatus.ready ? 'Ready' : 'Not Ready'
+        },
+        blockchain: {
+            configValid: blockchainStatus.configValid,
+            initialized: blockchainStatus.initialized,
+            ready: blockchainStatus.ready,
+            contractAddress: blockchainStatus.contractAddress,
+            hasProvider: blockchainStatus.hasProvider,
+            hasContract: blockchainStatus.hasContract
         },
         env: {
             nodeEnv: process.env.NODE_ENV || 'development',
             hasContract: !!process.env.CONTRACT_ADDRESS,
+            contractAddress: process.env.CONTRACT_ADDRESS?.substring(0, 10) + '...',
             hasJWT: !!process.env.JWT_SECRET,
-            hasMongoDB: !!process.env.MONGODB_URI
+            hasMongoDB: !!process.env.MONGODB_URI,
+            hasRPC: !!process.env.RPC_URL
         },
         version: '2.0.0'
     };
 
-    res.json(health);
+    const statusCode = blockchainStatus.ready ? 200 : 503;
+    res.status(statusCode).json(health);
 });
 
-// FIXED: API test endpoint that matches frontend expectation
+// API test endpoint
 app.get('/api/test', (req, res) => {
+    const blockchainStatus = blockchainSync.getServiceStatus();
+
     res.json({
         success: true,
         message: 'SomniaID API is working!',
         timestamp: new Date().toISOString(),
+        blockchain: {
+            status: blockchainStatus.ready ? 'Ready' : 'Not Ready',
+            contract: blockchainStatus.contractAddress
+        },
         features: [
             'Real-time updates',
             'Dynamic NFT metadata',
             'Achievement system',
             'Cross-platform SDK',
             'Live analytics',
-            'Blockchain verification'
+            'Blockchain verification',
+            'Token ID synchronization'
         ]
     });
 });
@@ -233,16 +330,21 @@ app.use('/api/*', (req, res) => {
         error: `API endpoint not found: ${req.method} ${req.path}`,
         availableEndpoints: [
             'GET /api/test',
+            'GET /health',
             'POST /api/identity',
             'GET /api/identity/:tokenId',
+            'GET /api/identity/blockchain/:address',
+            'POST /api/identity/sync-blockchain',
             'GET /api/achievements',
             'POST /api/achievements/create',
-            'GET /health'
+            'GET /api/blockchain/status',
+            'POST /api/blockchain/reinitialize',
+            'POST /api/blockchain/sync-all'
         ]
     });
 });
 
-// FIXED: Enhanced error handling middleware
+// Enhanced error handling middleware
 app.use((err: any, req: any, res: any, next: any) => {
     console.error('Server error:', {
         error: err.message,
@@ -259,15 +361,56 @@ app.use((err: any, req: any, res: any, next: any) => {
     });
 });
 
+// FIXED: Validate environment on startup (removed incorrect contract address check)
+const validateEnvironment = () => {
+    console.log('🔍 Validating server environment...');
+
+    const required = ['CONTRACT_ADDRESS', 'MONGODB_URI'];
+    const missing = required.filter(key => !process.env[key]);
+
+    if (missing.length > 0) {
+        console.error('❌ Missing required environment variables:', missing);
+        console.error('   Create a .env file with these variables');
+        return false;
+    }
+
+    // REMOVED: The incorrect old contract address check
+
+    console.log('✅ Environment validation passed');
+    console.log('   Contract Address:', process.env.CONTRACT_ADDRESS);
+    return true;
+};
+
 // Initialize services after database connection
 const initializeServices = () => {
     try {
+        console.log('🚀 Initializing services...');
+
         realtimeService = new RealtimeService(io);
         dynamicNFTService = new DynamicNFTService();
         achievementService = new AchievementService(realtimeService);
         verificationService = new VerificationService();
 
         console.log('✅ All services initialized');
+
+        // Check blockchain sync status
+        const blockchainStatus = blockchainSync.getServiceStatus();
+        if (blockchainStatus.ready) {
+            console.log('✅ Blockchain sync service is ready');
+        } else {
+            console.log('⚠️  Blockchain sync service not ready');
+            console.log('   Status:', blockchainStatus);
+
+            // Try to reinitialize blockchain sync
+            console.log('🔄 Attempting to reinitialize blockchain sync...');
+            blockchainSync.reinitialize().then((success) => {
+                if (success) {
+                    console.log('✅ Blockchain sync reinitialized successfully');
+                } else {
+                    console.error('❌ Failed to reinitialize blockchain sync');
+                }
+            });
+        }
 
         // Start background tasks
         setInterval(async () => {
@@ -278,47 +421,94 @@ const initializeServices = () => {
             } catch (error) {
                 console.error('Background task error:', error);
             }
-        }, 60000); // Run every minute
+        }, 60000);
 
         console.log('🔄 Background tasks started');
     } catch (error) {
-        console.error('Service initialization error:', error);
+        console.error('❌ Service initialization error:', error);
     }
 };
 
-// Connect to database
-connectDB().then(() => {
-    console.log('✅ Database connected');
-    initializeServices();
-}).catch((error) => {
-    console.error('❌ Failed to connect to database:', error);
-    process.exit(1);
-});
+// Main initialization
+async function startServer() {
+    try {
+        // Step 1: Validate environment
+        const envValid = validateEnvironment();
+        if (!envValid) {
+            console.error('❌ Server startup failed: Environment validation failed');
+            process.exit(1);
+        }
 
-const PORT = process.env.PORT || 5000;
+        // Step 2: Connect to database
+        console.log('🔗 Connecting to database...');
+        await connectDB();
+        console.log('✅ Database connected');
 
-server.listen(PORT, () => {
-    console.log('🚀 =================================');
-    console.log('🚀 SomniaID Backend Server Started');
-    console.log('🚀 =================================');
-    console.log(`🚀 Server running on port ${PORT}`);
-    console.log(`🌐 Environment: ${process.env.NODE_ENV || 'development'}`);
-    console.log(`🔗 API Base URL: http://localhost:${PORT}/api`);
-    console.log(`🔗 Health Check: http://localhost:${PORT}/health`);
-    console.log(`📊 Database: ${process.env.MONGODB_URI ? 'MongoDB Connected' : 'Local DB'}`);
-    console.log(`🔥 Real-time updates: ENABLED`);
-    console.log(`🎯 Dynamic NFTs: ENABLED`);
-    console.log(`🏆 Achievement system: ENABLED`);
-    console.log(`🌐 Cross-platform SDK: ENABLED`);
-    console.log(`📊 Live analytics: ENABLED`);
-    console.log(`🔐 Blockchain verification: ENABLED`);
-    console.log('🚀 =================================');
+        // Step 3: Initialize services
+        initializeServices();
 
-    // Log allowed origins for debugging
-    console.log('🌐 Allowed CORS Origins:');
-    allowedOrigins.forEach(origin => {
-        console.log(`   - ${origin}`);
+        // Step 4: Start server
+        const PORT = process.env.PORT || 5000;
+
+        server.listen(PORT, () => {
+            console.log('🚀 =================================');
+            console.log('🚀 SomniaID Backend Server Started');
+            console.log('🚀 =================================');
+            console.log(`🚀 Server running on port ${PORT}`);
+            console.log(`🌐 Environment: ${process.env.NODE_ENV || 'development'}`);
+            console.log(`🔗 API Base URL: http://localhost:${PORT}/api`);
+            console.log(`🔗 Health Check: http://localhost:${PORT}/health`);
+            console.log(`📊 Database: ${process.env.MONGODB_URI ? 'MongoDB Connected' : 'Local DB'}`);
+
+            // Show blockchain sync status
+            const blockchainStatus = blockchainSync.getServiceStatus();
+            console.log(`🔗 Blockchain Sync: ${blockchainStatus.ready ? '✅ Ready' : '⚠️  Not Ready'}`);
+            console.log(`📄 Contract: ${blockchainStatus.contractAddress}`);
+
+            console.log(`🔥 Real-time updates: ENABLED`);
+            console.log(`🎯 Dynamic NFTs: ENABLED`);
+            console.log(`🏆 Achievement system: ENABLED`);
+            console.log(`🌐 Cross-platform SDK: ENABLED`);
+            console.log(`📊 Live analytics: ENABLED`);
+            console.log(`🔐 Blockchain verification: ENABLED`);
+            console.log('🚀 =================================');
+
+            console.log('🌐 Allowed CORS Origins:');
+            allowedOrigins.forEach(origin => {
+                console.log(`   - ${origin}`);
+            });
+
+            if (!blockchainStatus.ready) {
+                console.log('⚠️  WARNING: Blockchain sync service not ready');
+                console.log('   Some features may not work correctly');
+                console.log('   Check your CONTRACT_ADDRESS and RPC_URL');
+            }
+        });
+
+    } catch (error) {
+        console.error('❌ Server startup failed:', error);
+        process.exit(1);
+    }
+}
+
+// Handle graceful shutdown
+process.on('SIGTERM', () => {
+    console.log('🛑 SIGTERM received, shutting down gracefully');
+    server.close(() => {
+        console.log('🛑 Server closed');
+        process.exit(0);
     });
 });
+
+process.on('SIGINT', () => {
+    console.log('🛑 SIGINT received, shutting down gracefully');
+    server.close(() => {
+        console.log('🛑 Server closed');
+        process.exit(0);
+    });
+});
+
+// Start the server
+startServer();
 
 export default app;

@@ -1,4 +1,3 @@
-// utils/api.ts
 import toast from 'react-hot-toast';
 
 // Use production API URL in production
@@ -36,6 +35,7 @@ interface ApiResponse<T = any> {
     identities?: any;
     results?: any;
     identity?: any;
+    blockchainVerified?: boolean;
 }
 
 class ApiClient {
@@ -139,25 +139,44 @@ class ApiClient {
         });
     }
 
-    // Identity endpoints
-    async getIdentities(page = 1, limit = 20) {
-        return this.request(`/identity?page=${page}&limit=${limit}`);
+    // ENHANCED: Identity endpoints with blockchain sync
+    async getIdentities(page = 1, limit = 20, verifyBlockchain = false) {
+        const params = new URLSearchParams({
+            page: page.toString(),
+            limit: limit.toString(),
+            verifyBlockchain: verifyBlockchain.toString()
+        });
+
+        return this.request(`/identity?${params}`);
     }
 
     async getIdentity(tokenId: number) {
         return this.request(`/identity/${tokenId}`);
     }
 
-    // FIXED: Match backend /create endpoint and parameters
-    async createIdentity(username: string, primarySkill: string, profileData?: string) {
-        console.log('Creating identity with:', { username, primarySkill });
+    // NEW: Blockchain-first identity lookup
+    async getIdentityBlockchain(address: string) {
+        return this.request(`/identity/blockchain/${address}`);
+    }
 
-        return this.request('/identity/create', {  // FIXED: Use /create endpoint
+    // ENHANCED: Create identity with blockchain sync support
+    async createIdentity(username: string, primarySkill: string, profileData?: string, ownerAddress?: string, txHash?: string) {
+        console.log('Creating identity with:', {
+            username,
+            primarySkill,
+            hasProfileData: !!profileData,
+            hasOwnerAddress: !!ownerAddress,
+            hasTxHash: !!txHash
+        });
+
+        return this.request('/identity/create', {
             method: 'POST',
             body: JSON.stringify({
                 username: username.trim(),
                 primarySkill: primarySkill.trim(),
-                bio: profileData || ''  // FIXED: Send as 'bio' parameter that backend expects
+                bio: profileData || '',
+                ownerAddress: ownerAddress,
+                txHash: txHash
             }),
         });
     }
@@ -174,6 +193,14 @@ class ApiClient {
             method: 'PUT',
             body: JSON.stringify(data),
         })
+    }
+
+    // NEW: Manual blockchain sync
+    async syncBlockchain(address?: string) {
+        return this.request('/identity/sync-blockchain', {
+            method: 'POST',
+            body: JSON.stringify({ address })
+        });
     }
 
     async getPortfolio(address: string) {
@@ -238,6 +265,18 @@ class ApiClient {
             console.error('Connection test failed:', error);
             throw new Error('Backend server is not accessible');
         }
+    }
+
+    // NEW: Debug endpoints
+    async debugTokenId(address: string) {
+        return this.request('/identity/debug-token', {
+            method: 'POST',
+            body: JSON.stringify({ address })
+        });
+    }
+
+    async getAllBlockchainIdentities() {
+        return this.request('/identity/blockchain/all');
     }
 }
 

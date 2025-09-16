@@ -49,7 +49,8 @@ export const config = createConfig(
         walletConnectProjectId: process.env.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID || '',
         chains: [somniaTestnet, mainnet, sepolia],
         transports: {
-            [somniaTestnet.id]: http(),
+            // Fixed transport without invalid fetchOptions
+            [somniaTestnet.id]: http('https://dream-rpc.somnia.network/'),
             [mainnet.id]: http(),
             [sepolia.id]: http(),
         },

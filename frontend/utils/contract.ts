@@ -1065,11 +1065,16 @@ export const CONTRACT_ABI = [
     }
 ] as const
 
-export const CONTRACT_ADDRESS = process.env.NEXT_PUBLIC_CONTRACT_ADDRESS as `0x${string}`
+export const CONTRACT_ADDRESS = process.env.NEXT_PUBLIC_CONTRACT_ADDRESS as `0x${string}` || "0x6f2CC3Fb16894A19aa1eA275158F7dd4d345a983"
 
 // Enhanced validation - Keep this for debugging
-if (!CONTRACT_ADDRESS || CONTRACT_ADDRESS === '0x6f2CC3Fb16894A19aa1eA275158F7dd4d345a983') {
-    console.error('❌ Contract address not updated! Using old contract.')
+if (!CONTRACT_ADDRESS) {
+    console.error('❌ NEXT_PUBLIC_CONTRACT_ADDRESS environment variable not set!')
+    if (!CONTRACT_ADDRESS) {
+        console.error('❌ NEXT_PUBLIC_CONTRACT_ADDRESS environment variable not set!')
+    } else {
+        console.log('✅ Contract address loaded:', CONTRACT_ADDRESS)
+    }
 } else {
     console.log('✅ Contract address loaded:', CONTRACT_ADDRESS)
 }
