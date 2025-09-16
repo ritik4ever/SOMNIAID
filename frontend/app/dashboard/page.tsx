@@ -16,6 +16,7 @@ import QuickActions from '@/components/dashboard/QuickActions'
 import { WalletDebugComponent } from '@/components/WalletDebugComponent'
 import { NetworkSwitcher } from '@/components/NetworkSwitcher'
 import { parseEther } from 'viem'
+import { useTokenPrice } from '@/hooks/useTokenPrice'
 
 const CONTRACT_ADDRESS = process.env.NEXT_PUBLIC_CONTRACT_ADDRESS as `0x${string}`
 
@@ -49,11 +50,13 @@ export default function DashboardPage() {
     const [showCreateForm, setShowCreateForm] = useState(false)
     const [creating, setCreating] = useState(false)
 
-    // Listing modal state
+    // Listing modal state (removed isApproving)
     const [showListModal, setShowListModal] = useState(false)
     const [listPrice, setListPrice] = useState('')
     const [isListing, setIsListing] = useState(false)
-    const [isApproving, setIsApproving] = useState(false)
+
+    // Get real-time STT price using the external hook
+    const { price: sttUsdPrice, loading: priceLoading, error: priceError } = useTokenPrice('stt')
 
     const { writeContract, data: hash, error, isPending } = useWriteContract()
 
@@ -69,30 +72,23 @@ export default function DashboardPage() {
         }
     }, [isConnected, address])
 
+    // Simplified useEffect - removed approval logic
     useEffect(() => {
         if (isConfirmed && hash) {
-            if (isApproving) {
-                // Approval transaction confirmed, now proceed to listing
-                toast.dismiss()
-                toast.success('NFT approved! Now listing...')
-                setIsApproving(false)
-
-                // Proceed with actual listing
-                performListing()
-            } else if (isListing && !isApproving) {
+            if (isListing) {
                 // Listing transaction confirmed
                 toast.dismiss()
                 toast.success('Identity listed for sale!')
                 setIsListing(false)
                 setShowListModal(false)
                 setListPrice('')
-            } else if (!isApproving && !isListing) {
+            } else {
                 // Identity creation confirmed
                 toast.success('Identity created successfully!')
                 checkUserIdentity()
             }
         }
-    }, [isConfirmed, hash, isApproving, isListing])
+    }, [isConfirmed, hash, isListing])
 
     const checkUserIdentity = async () => {
         try {
@@ -142,7 +138,7 @@ export default function DashboardPage() {
         toast.success('Identity created successfully!')
     }
 
-    // Improved listing function with approval step
+    // Direct listing function with enhanced debugging - NO APPROVAL STEP
     const handleListForSale = async () => {
         if (!listPrice || parseFloat(listPrice) <= 0) {
             toast.error('Please enter a valid price')
@@ -151,53 +147,43 @@ export default function DashboardPage() {
 
         try {
             setIsListing(true)
+            toast.loading('Listing NFT for sale...')
 
-            // Step 1: First approve the marketplace contract to manage your NFT
-            toast.loading('Step 1/2: Approving NFT for marketplace...')
-            setIsApproving(true)
-
-            await writeContract({
-                address: CONTRACT_ADDRESS,
-                abi: CONTRACT_ABI,
-                functionName: 'setApprovalForAll',
-                args: [CONTRACT_ADDRESS, true],
-                gas: BigInt(120000)
-            })
-
-        } catch (error: any) {
-            console.error('Transaction error:', error)
-            setIsListing(false)
-            setIsApproving(false)
-            toast.dismiss()
-
-            if (error.message?.includes('User rejected')) {
-                toast.error('Transaction cancelled by user')
-            } else if (error.message?.includes('insufficient funds')) {
-                toast.error('Insufficient STT for gas fees')
-            } else {
-                toast.error(`Transaction failed: ${error.shortMessage || error.message}`)
-            }
-        }
-    }
-
-    // Function for the actual listing after approval
-    const performListing = async () => {
-        try {
-            toast.loading('Step 2/2: Listing NFT for sale...')
+            // Debug info
+            console.log('Listing Debug Info:')
+            console.log('Token ID:', identity!.tokenId)
+            console.log('Your address:', address)
+            console.log('List price (STT):', listPrice)
+            console.log('List price (Wei):', parseEther(listPrice).toString())
 
             await writeContract({
                 address: CONTRACT_ADDRESS,
                 abi: CONTRACT_ABI,
                 functionName: 'listIdentity',
                 args: [BigInt(identity!.tokenId), parseEther(listPrice)],
-                gas: BigInt(150000) // Increased gas limit
+                gas: BigInt(200000)
             })
 
         } catch (error: any) {
-            console.error('Listing error:', error)
-            toast.dismiss()
-            toast.error(`Listing failed: ${error.shortMessage || error.message}`)
+            console.error('Transaction error:', error)
             setIsListing(false)
+            toast.dismiss()
+
+            // More specific error messages
+            if (error.message?.includes('User rejected')) {
+                toast.error('Transaction cancelled by user')
+            } else if (error.message?.includes('insufficient funds')) {
+                toast.error('Insufficient STT for gas fees')
+            } else if (error.message?.includes('Already listed')) {
+                toast.error('NFT is already listed for sale')
+            } else if (error.message?.includes('Not the owner')) {
+                toast.error('You are not the owner of this NFT')
+            } else if (error.message?.includes('Identity does not exist')) {
+                toast.error('NFT does not exist')
+            } else {
+                toast.error(`Transaction failed: ${error.shortMessage || error.message}`)
+                console.log('Full error:', error)
+            }
         }
     }
 
@@ -493,7 +479,7 @@ export default function DashboardPage() {
                     </div>
                 </div>
 
-                {/* List for Sale Modal */}
+                {/* List for Sale Modal with Real-Time Price Conversion - Updated Button Text */}
                 {showListModal && (
                     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
                         <div className="bg-white rounded-2xl p-6 max-w-md w-full mx-4">
@@ -512,9 +498,18 @@ export default function DashboardPage() {
                                     placeholder="Enter price in STT"
                                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
                                 />
-                                <p className="text-xs text-gray-500 mt-1">
-                                    ~${(parseFloat(listPrice || '0') * 1.5).toFixed(4)} USD
-                                </p>
+                                {priceLoading ? (
+                                    <p className="text-xs text-gray-500 mt-1">Loading USD price...</p>
+                                ) : priceError ? (
+                                    <p className="text-xs text-red-500 mt-1">Unable to fetch USD price (using fallback)</p>
+                                ) : (
+                                    <p className="text-xs text-gray-500 mt-1">
+                                        ~${(parseFloat(listPrice || '0') * sttUsdPrice).toFixed(4)} USD
+                                        <span className="ml-2 text-gray-400">
+                                            (1 STT = ${sttUsdPrice.toFixed(4)})
+                                        </span>
+                                    </p>
+                                )}
                             </div>
 
                             <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3 mb-4">
@@ -535,7 +530,7 @@ export default function DashboardPage() {
                                     disabled={isListing || !listPrice}
                                     className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
                                 >
-                                    {isApproving ? 'Approving...' : isListing ? 'Listing...' : 'Approve & List'}
+                                    {isListing ? 'Listing...' : 'List for Sale'}
                                 </button>
                             </div>
                         </div>
