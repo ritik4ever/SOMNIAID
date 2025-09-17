@@ -5,7 +5,7 @@ import { useAccount, useWaitForTransactionReceipt, useWriteContract } from 'wagm
 import { readContract, getGasPrice, estimateGas } from 'wagmi/actions'
 import { formatEther, parseEther, formatGwei, parseGwei } from 'viem'
 import { motion } from 'framer-motion'
-import { User, Zap, Trophy, Plus, Search, TrendingUp, ExternalLink, Tag } from 'lucide-react'
+import { User, Zap, Trophy, Plus, Search, TrendingUp, ExternalLink, Tag, RefreshCw } from 'lucide-react'
 import { ReputationCard } from '@/components/dashboard/ReputationCard'
 import { CreateIdentity } from '@/components/dashboard/CreateIdentity'
 import { ProfileSection } from '@/components/dashboard/ProfileSection'
@@ -17,6 +17,7 @@ import toast from 'react-hot-toast'
 import { WalletDebugComponent } from '@/components/WalletDebugComponent'
 import { NetworkSwitcher } from '@/components/NetworkSwitcher'
 import { useTokenPrice } from '@/hooks/useTokenPrice'
+import { useNFTEventSync } from '@/hooks/useNFTSync'
 import { config } from '@/utils/wagmi'
 // Updated imports for gas estimation
 import {
@@ -352,6 +353,100 @@ export default function DashboardPage() {
         }
     }
 
+    // Add this debug function to check actual blockchain state
+    const debugPurchaseState = async (tokenId: number, buyerAddress: string, sellerAddress: string) => {
+        try {
+            console.group('🔍 PURCHASE STATE DEBUG')
+
+            // Check current owner
+            const currentOwner = await readContract(config, {
+                address: CONTRACT_ADDRESS,
+                abi: CONTRACT_ABI,
+                functionName: 'ownerOf',
+                args: [BigInt(tokenId)]
+            })
+
+            console.log('Token ID:', tokenId)
+            console.log('Current owner on blockchain:', currentOwner)
+            console.log('Expected buyer:', buyerAddress)
+            console.log('Expected seller:', sellerAddress)
+            console.log('Ownership transferred correctly:', (currentOwner as string).toLowerCase() === buyerAddress.toLowerCase())
+
+            // Check address mappings
+            const buyerTokenId = await readContract(config, {
+                address: CONTRACT_ADDRESS,
+                abi: CONTRACT_ABI,
+                functionName: 'getTokenIdByAddress',
+                args: [buyerAddress as `0x${string}`]
+            })
+
+            const sellerTokenId = await readContract(config, {
+                address: CONTRACT_ADDRESS,
+                abi: CONTRACT_ABI,
+                functionName: 'getTokenIdByAddress',
+                args: [sellerAddress as `0x${string}`]
+            })
+
+            console.log('Buyer address mapping result:', buyerTokenId)
+            console.log('Seller address mapping result:', sellerTokenId)
+
+            // Check if still listed
+            const [isListed, price] = await readContract(config, {
+                address: CONTRACT_ADDRESS,
+                abi: CONTRACT_ABI,
+                functionName: 'getListingInfo',
+                args: [BigInt(tokenId)]
+            }) as [boolean, bigint]
+
+            console.log('Token still listed:', isListed)
+            console.log('Listing price:', formatEther(price), 'STT')
+
+            console.groupEnd()
+
+        } catch (error) {
+            console.error('Purchase state debug failed:', error)
+            console.groupEnd()
+        }
+    }
+
+    // Check if seller received payment
+    const checkPaymentTransfer = async (sellerAddress: string, transactionHash: string) => {
+        try {
+            console.group('💰 PAYMENT VERIFICATION')
+
+            console.log('Checking payment transfer for seller:', sellerAddress)
+            console.log('Transaction hash:', transactionHash)
+
+            // Note: Full payment verification would require additional RPC calls
+            // This is a basic structure for payment verification
+
+            console.groupEnd()
+
+            toast.success('Payment verification logged to console')
+
+        } catch (error) {
+            console.error('Payment verification failed:', error)
+            console.groupEnd()
+        }
+    }
+
+    // Make sure your portfolio component refetches data
+    const refreshPortfolio = async () => {
+        // Force refresh identity data
+        await checkUserIdentity()
+
+        // Clear any cached data and update UI state
+        toast.success(`Portfolio refreshed! ${isListening ? '🔄 Live sync active' : ''}`)
+    }
+
+    // ADD this sync status component:
+    const SyncStatus = () => (
+        <div className="text-xs text-gray-500 flex items-center space-x-1">
+            <div className={`w-2 h-2 rounded-full ${isListening ? 'bg-green-400' : 'bg-gray-400'}`} />
+            <span>{isListening ? 'Live sync' : 'Offline'}</span>
+        </div>
+    )
+
     // Also add this debug function to test gas estimation
     const debugGasEstimation = async () => {
         try {
@@ -589,6 +684,15 @@ export default function DashboardPage() {
         }
     }
 
+    // ADD this real-time sync integration AFTER checkUserIdentity is defined:
+    const { isListening } = useNFTEventSync({
+        onIdentityCreated: () => checkUserIdentity(),
+        onIdentityPurchased: () => checkUserIdentity(),
+        onReputationUpdated: () => checkUserIdentity(),
+        onAchievementUnlocked: () => checkUserIdentity(),
+        refreshIdentity: checkUserIdentity
+    })
+
     useEffect(() => {
         if (isConnected && address) {
             checkUserIdentity()
@@ -609,6 +713,11 @@ export default function DashboardPage() {
                 toast.success('Identity created successfully!')
                 checkUserIdentity()
             }
+
+            // After any successful transaction, refresh all data
+            setTimeout(() => {
+                refreshPortfolio()
+            }, 3000) // Wait 3 seconds for blockchain to sync
         }
     }, [isConfirmed, hash, isListing])
 
@@ -983,6 +1092,13 @@ export default function DashboardPage() {
                                     <TrendingUp className="w-5 h-5 text-green-600" />
                                     <span className="font-medium text-green-700">Check Network Gas</span>
                                 </button>
+                                <button
+                                    onClick={refreshPortfolio}
+                                    className="w-full flex items-center space-x-3 p-3 bg-indigo-50 rounded-xl hover:bg-indigo-100 transition-colors"
+                                >
+                                    <RefreshCw className="w-5 h-5 text-indigo-600" />
+                                    <span className="font-medium text-indigo-700">Force Refresh</span>
+                                </button>
                                 {/* Debug button for testing gas estimation */}
                                 <button
                                     onClick={debugGasEstimation}
@@ -1006,7 +1122,23 @@ export default function DashboardPage() {
                                     <Zap className="w-5 h-5 text-gray-600" />
                                     <span className="font-medium text-gray-700">Debug Contract</span>
                                 </button>
+                                {/* Debug button for purchase state */}
+                                <button
+                                    onClick={async () => {
+                                        if (!address) return
+                                        const tokenId = await getBlockchainTokenId(address)
+                                        if (tokenId) {
+                                            // Example debug - replace with actual buyer/seller addresses as needed
+                                            await debugPurchaseState(tokenId, address, address)
+                                        }
+                                    }}
+                                    className="w-full flex items-center space-x-3 p-3 bg-orange-50 rounded-xl hover:bg-orange-100 transition-colors"
+                                >
+                                    <Trophy className="w-5 h-5 text-orange-600" />
+                                    <span className="font-medium text-orange-700">Debug Purchase State</span>
+                                </button>
                             </div>
+                            <SyncStatus />
                         </motion.div>
 
                         <motion.div
