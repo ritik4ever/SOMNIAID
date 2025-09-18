@@ -14,14 +14,14 @@ export function PriceDisplay({ tokenId }: PriceDisplayProps) {
         address: CONTRACT_ADDRESS,
         abi: CONTRACT_ABI,
         functionName: 'identityPrices',
-        args: [BigInt(tokenId)] // FIX: Convert number to bigint
+        args: [BigInt(tokenId)]
     })
 
     const { data: isListed } = useReadContract({
         address: CONTRACT_ADDRESS,
         abi: CONTRACT_ABI,
         functionName: 'isListed',
-        args: [BigInt(tokenId)] // FIX: Convert number to bigint
+        args: [BigInt(tokenId)]
     })
 
     if (!isListed || !price) {
@@ -31,7 +31,7 @@ export function PriceDisplay({ tokenId }: PriceDisplayProps) {
     return (
         <div className="bg-green-100 px-3 py-1 rounded-lg">
             <span className="text-green-800 font-semibold">
-                {formatEther(price)} STT
+                {formatEther(BigInt(String(price || '0')))} STT
             </span>
         </div>
     )

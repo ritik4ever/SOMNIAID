@@ -3,11 +3,11 @@
 import { useState, useEffect } from 'react'
 import { motion } from 'framer-motion'
 import { Search, Filter, TrendingUp, Star, ShoppingCart, Eye, ExternalLink, Trophy, Zap } from 'lucide-react'
-import { useAccount, useWriteContract, useWaitForTransactionReceipt, useReadContract } from 'wagmi'
+import { useAccount, useWriteContract, useWaitForTransactionReceipt, useReadContract, usePublicClient } from 'wagmi'
 import { formatEther, parseEther } from 'viem'
 import Link from 'next/link'
 import { api } from '@/utils/api'
-import { CONTRACT_ABI, CONTRACT_ADDRESS } from '@/utils/contract'
+import { CONTRACT_ABI, CONTRACT_ADDRESS, getListedIdentities } from '@/utils/contract'
 import toast from 'react-hot-toast'
 
 interface MarketplaceItem {
@@ -43,111 +43,180 @@ export default function MarketplacePage() {
         hash,
     })
 
-    // Get listed identities from contract
-    const { data: listedData, refetch: refetchListings } = useReadContract({
-        address: CONTRACT_ADDRESS,
-        abi: CONTRACT_ABI,
-        functionName: 'getListedIdentities',
-        query: { enabled: !!CONTRACT_ADDRESS }
-    })
+    // Add publicClient hook
+    const publicClient = usePublicClient()
 
     useEffect(() => {
         loadMarketplaceItems()
-    }, [listedData])
+    }, [publicClient])
 
     useEffect(() => {
         filterAndSortItems()
     }, [items, searchQuery, sortBy, filter])
 
+    // ADDED: Listen for marketplace refresh events
+    useEffect(() => {
+        const handleMarketplaceRefresh = () => {
+            console.log('Marketplace refresh event received')
+            loadMarketplaceItems()
+        }
+
+        window.addEventListener('marketplaceRefresh', handleMarketplaceRefresh)
+        return () => window.removeEventListener('marketplaceRefresh', handleMarketplaceRefresh)
+    }, [])
+
     const loadMarketplaceItems = async () => {
         try {
-            setLoading(true)
+            setLoading(true);
+            console.log('🔄 Loading marketplace items...');
 
-            if (listedData && Array.isArray(listedData) && listedData.length === 2) {
-                const tokenIds = listedData[0] as readonly bigint[]
-                const prices = listedData[1] as readonly bigint[]
+            // Method 1: Try the new API endpoint first
+            try {
+                const response = await fetch('/api/marketplace/listings');
+                const data = await response.json();
 
-                console.log('Listed tokens:', tokenIds, 'Prices:', prices)
+                if (data.success && data.listings && data.listings.length > 0) {
+                    console.log(`✅ Loaded ${data.listings.length} listings from API`);
 
-                if (tokenIds.length === 0) {
-                    // No listings, show demo data
-                    setItems(generateDemoMarketplaceData())
-                    setLoading(false)
-                    return
+                    const formattedItems = data.listings.map((listing: any) => ({
+                        tokenId: listing.tokenId,
+                        username: listing.username, // REAL USERNAME FROM BACKEND
+                        primarySkill: listing.primarySkill,
+                        reputationScore: listing.reputationScore,
+                        skillLevel: listing.skillLevel,
+                        achievementCount: listing.achievementCount,
+                        currentPrice: BigInt(listing.currentPrice),
+                        isVerified: listing.isVerified,
+                        isForSale: true,
+                        seller: listing.seller
+                    }));
+
+                    setItems(formattedItems);
+                    setLoading(false);
+                    return;
                 }
-
-                // Get identity details for each listed token
-                const marketplaceItems: MarketplaceItem[] = []
-
-                for (let i = 0; i < tokenIds.length; i++) {
-                    try {
-                        // Get identity from your API
-                        const response = await api.getIdentity(Number(tokenIds[i]))
-
-                        // Create fallback data first
-                        const fallbackData = {
-                            tokenId: Number(tokenIds[i]),
-                            username: `Identity #${tokenIds[i]}`,
-                            primarySkill: 'Unknown Skill',
-                            reputationScore: 100,
-                            skillLevel: 1,
-                            achievementCount: 0,
-                            currentPrice: prices[i],
-                            isVerified: false,
-                            isForSale: true,
-                            seller: '0x...',
-                            profile: {}
-                        }
-
-                        if (response.success && response.data && typeof response.data === 'object') {
-                            const data = response.data as any
-
-                            marketplaceItems.push({
-                                ...fallbackData,
-                                username: data.username || fallbackData.username,
-                                primarySkill: data.primarySkill || fallbackData.primarySkill,
-                                reputationScore: data.reputationScore || fallbackData.reputationScore,
-                                skillLevel: data.skillLevel || fallbackData.skillLevel,
-                                achievementCount: data.achievementCount || fallbackData.achievementCount,
-                                isVerified: data.isVerified || fallbackData.isVerified,
-                                seller: data.ownerAddress || fallbackData.seller,
-                                profile: data.profile || fallbackData.profile
-                            })
-                        } else {
-                            // Use fallback data if API response is invalid
-                            marketplaceItems.push(fallbackData)
-                        }
-                    } catch (error) {
-                        console.error(`Error loading identity ${tokenIds[i]}:`, error)
-                        // Add fallback item if everything fails
-                        marketplaceItems.push({
-                            tokenId: Number(tokenIds[i]),
-                            username: `Identity #${tokenIds[i]}`,
-                            primarySkill: 'Unknown Skill',
-                            reputationScore: 100,
-                            skillLevel: 1,
-                            achievementCount: 0,
-                            currentPrice: prices[i],
-                            isVerified: false,
-                            isForSale: true,
-                            seller: '0x...',
-                            profile: {}
-                        })
-                    }
-                }
-
-                setItems(marketplaceItems)
-            } else {
-                // No contract data, show demo
-                setItems(generateDemoMarketplaceData())
+            } catch (apiError) {
+                console.error('API endpoint failed, trying contract directly:', apiError);
             }
+
+            // Method 2: Direct contract calls using helper function
+            if (!publicClient) {
+                console.log('PublicClient not available yet');
+                return;
+            }
+
+            console.log('📞 Using direct contract calls...');
+
+            // Use the helper function to get listed identities
+            const [tokenIds, prices] = await getListedIdentities(publicClient);
+
+            console.log('📋 Listed tokens from contract:', tokenIds.length);
+
+            if (tokenIds.length === 0) {
+                console.log('⚠️ No tokens listed for sale');
+                setItems([]);
+                setLoading(false);
+                return;
+            }
+
+            const marketplaceItems: MarketplaceItem[] = [];
+
+            // Process each listed token
+            for (let i = 0; i < tokenIds.length; i++) {
+                try {
+                    const tokenId = Number(tokenIds[i]);
+                    const price = prices[i];
+
+                    console.log(`🔍 Processing token ${tokenId}...`);
+
+                    // Try to get identity data from your backend API first
+                    let username = `Identity #${tokenId}`;
+                    let identityData: any = null;
+
+                    try {
+                        const backendResponse = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000'}/api/identity/${tokenId}`);
+                        if (backendResponse.ok) {
+                            const backendResult = await backendResponse.json();
+                            if (backendResult.success && backendResult.identity) {
+                                identityData = backendResult.identity;
+                                username = backendResult.identity.username || username;
+                                console.log(`✅ Got username from backend: ${username}`);
+                            }
+                        }
+                    } catch (backendError) {
+                        console.log(`⚠️ Backend API failed for token ${tokenId}, using contract`);
+                    }
+
+                    // Fallback: Get identity from contract if backend failed
+                    if (!identityData) {
+                        try {
+                            const contractIdentity = await publicClient.readContract({
+                                address: CONTRACT_ADDRESS,
+                                abi: CONTRACT_ABI,
+                                functionName: 'getIdentity',
+                                args: [BigInt(tokenId)]
+                            }) as any;
+
+                            identityData = {
+                                tokenId,
+                                username,
+                                primarySkill: contractIdentity.primarySkill || 'Unknown',
+                                reputationScore: Number(contractIdentity.reputationScore || 100),
+                                skillLevel: Number(contractIdentity.skillLevel || 1),
+                                achievementCount: Number(contractIdentity.achievementCount || 0),
+                                isVerified: contractIdentity.isVerified || false
+                            };
+                        } catch (contractError) {
+                            console.error(`Error getting contract identity for ${tokenId}:`, contractError);
+                            continue; // Skip this token
+                        }
+                    }
+
+                    // Get seller address
+                    let seller = '0x...';
+                    try {
+                        seller = await publicClient.readContract({
+                            address: CONTRACT_ADDRESS,
+                            abi: CONTRACT_ABI,
+                            functionName: 'ownerOf',
+                            args: [BigInt(tokenId)]
+                        }) as string;
+                    } catch (sellerError) {
+                        console.error(`Error getting seller for ${tokenId}:`, sellerError);
+                    }
+
+                    const marketplaceItem: MarketplaceItem = {
+                        tokenId: identityData.tokenId,
+                        username: identityData.username, // REAL USERNAME
+                        primarySkill: identityData.primarySkill,
+                        reputationScore: identityData.reputationScore,
+                        skillLevel: identityData.skillLevel,
+                        achievementCount: identityData.achievementCount,
+                        currentPrice: price,
+                        isVerified: identityData.isVerified,
+                        isForSale: true,
+                        seller: seller,
+                        profile: identityData.profile || {}
+                    };
+
+                    marketplaceItems.push(marketplaceItem);
+                    console.log(`✅ Added marketplace item: ${identityData.username}`);
+
+                } catch (itemError) {
+                    console.error(`Error processing token ${tokenIds[i]}:`, itemError);
+                }
+            }
+
+            console.log(`📊 Total marketplace items loaded: ${marketplaceItems.length}`);
+            setItems(marketplaceItems);
+
         } catch (error) {
-            console.error('Error loading marketplace:', error)
-            setItems(generateDemoMarketplaceData())
+            console.error('❌ Error loading marketplace:', error);
+            setItems([]);
         } finally {
-            setLoading(false)
+            setLoading(false);
         }
-    }
+    };
 
     const generateDemoMarketplaceData = (): MarketplaceItem[] => {
         // Return empty array 
@@ -207,10 +276,11 @@ export default function MarketplacePage() {
                 value: item.currentPrice
             })
 
-            toast.loading('Processing purchase...')
+            toast.loading('Processing purchase...', { id: 'buying' })
         } catch (error: any) {
             console.error('Error buying NFT:', error)
-            toast.error(error.message || 'Failed to buy NFT')
+            toast.dismiss('buying')
+            toast.error(error.shortMessage || error.message || 'Failed to buy NFT')
             setBuyingTokenId(null)
         }
     }
@@ -220,7 +290,6 @@ export default function MarketplacePage() {
             toast.dismiss()
             toast.success('NFT purchased successfully!')
             setBuyingTokenId(null)
-            refetchListings() // Refresh listings
             loadMarketplaceItems() // Refresh marketplace
         }
     }, [isConfirmed, buyingTokenId])
@@ -330,15 +399,10 @@ export default function MarketplacePage() {
                         <ShoppingCart className="w-16 h-16 text-gray-400 mx-auto mb-4" />
                         <h3 className="text-xl font-semibold text-gray-700 mb-2">No NFTs available</h3>
                         <p className="text-gray-500 mb-4">
-                            {(() => {
-                                if (listedData && Array.isArray(listedData) && listedData.length >= 2) {
-                                    const tokenIds = listedData[0] as readonly bigint[]
-                                    return tokenIds.length === 0
-                                        ? "No identities are currently listed for sale"
-                                        : "Try adjusting your search or filters"
-                                }
-                                return "Loading marketplace data..."
-                            })()}
+                            {items.length === 0 && !loading
+                                ? "No identities are currently listed for sale"
+                                : "Try adjusting your search or filters"
+                            }
                         </p>
                         <Link
                             href="/dashboard"
@@ -355,7 +419,15 @@ export default function MarketplacePage() {
                                 initial={{ opacity: 0, y: 20 }}
                                 animate={{ opacity: 1, y: 0 }}
                                 transition={{ delay: index * 0.1 }}
-                                className="bg-white rounded-2xl overflow-hidden shadow-sm border border-gray-100 hover:shadow-lg transition-all duration-300"
+                                className="bg-white rounded-2xl overflow-hidden shadow-sm border border-gray-100 hover:shadow-lg transition-all duration-300 cursor-pointer hover:scale-105"
+                                onClick={() => {
+                                    // ADDED: Click to view NFT details
+                                    if (item.tokenId < 1000) { // Real NFT
+                                        window.location.href = `/identity/${item.tokenId}`
+                                    } else {
+                                        toast.error('This is demo data - real NFTs will be clickable')
+                                    }
+                                }}
                             >
                                 {/* NFT Header */}
                                 <div className="p-4 border-b border-gray-100">
@@ -381,6 +453,7 @@ export default function MarketplacePage() {
                                             target="_blank"
                                             rel="noopener noreferrer"
                                             className="text-gray-400 hover:text-gray-600"
+                                            onClick={(e) => e.stopPropagation()}
                                         >
                                             <ExternalLink className="w-4 h-4" />
                                         </a>
@@ -412,15 +485,15 @@ export default function MarketplacePage() {
                                                 {formatEther(item.currentPrice)} STT
                                             </div>
                                             <div className="text-xs text-gray-500">
-                                                ~${(Number(formatEther(item.currentPrice)) * 0.1).toFixed(2)} USD
+                                                ~${(Number(formatEther(item.currentPrice)) * 4.5).toFixed(2)} USD
                                             </div>
                                         </div>
                                     </div>
 
                                     {/* Buy Button */}
                                     <button
-                                        onClick={() => {
-                                            // Check if this is demo data
+                                        onClick={(e) => {
+                                            e.stopPropagation() // Prevent card click
                                             if (item.tokenId >= 1001) {
                                                 toast.error('This is demo data. Real NFTs will have lower token IDs.')
                                                 return

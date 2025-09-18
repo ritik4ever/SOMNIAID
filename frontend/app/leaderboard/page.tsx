@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { motion } from 'framer-motion'
-import { Trophy, Medal, Star, TrendingUp, Crown, Award, ExternalLink } from 'lucide-react'
+import { Trophy, Medal, Star, TrendingUp, TrendingDown, Crown, Award, ExternalLink } from 'lucide-react'
 import { api } from '@/utils/api'
 import toast from 'react-hot-toast'
 
@@ -22,10 +22,41 @@ interface LeaderboardEntry {
 export default function LeaderboardPage() {
     const [leaderboard, setLeaderboard] = useState<LeaderboardEntry[]>([])
     const [loading, setLoading] = useState(true)
+    // ADDED: Price tracking state
+    const [priceChanges, setPriceChanges] = useState<{ [key: number]: { change: number, trend: 'up' | 'down' | 'neutral' } }>({})
 
     useEffect(() => {
         loadLeaderboard()
     }, [])
+
+    // ADDED: Listen for leaderboard refresh events
+    useEffect(() => {
+        const handleLeaderboardRefresh = () => {
+            console.log('Leaderboard refresh event received')
+            loadLeaderboard()
+
+            // Simulate price changes for demo
+            const changes: { [key: number]: { change: number, trend: 'up' | 'down' | 'neutral' } } = {}
+            leaderboard.forEach(entry => {
+                const change = (Math.random() - 0.5) * 10 // -5% to +5%
+                changes[entry.tokenId] = {
+                    change: Number(change.toFixed(2)),
+                    trend: change > 1 ? 'up' : change < -1 ? 'down' : 'neutral'
+                }
+            })
+            setPriceChanges(changes)
+        }
+
+        window.addEventListener('leaderboardRefresh', handleLeaderboardRefresh)
+
+        // Update price changes every 30 seconds
+        const priceInterval = setInterval(handleLeaderboardRefresh, 30000)
+
+        return () => {
+            window.removeEventListener('leaderboardRefresh', handleLeaderboardRefresh)
+            clearInterval(priceInterval)
+        }
+    }, [leaderboard])
 
     const loadLeaderboard = async () => {
         try {
@@ -78,7 +109,6 @@ export default function LeaderboardPage() {
                 )
         }
     }
-
 
     const getRankColor = (rank: number) => {
         switch (rank) {
@@ -153,10 +183,14 @@ export default function LeaderboardPage() {
                                 initial={{ opacity: 0, y: 20 }}
                                 animate={{ opacity: 1, y: 0 }}
                                 transition={{ delay: index * 0.1 }}
-                                className={`relative overflow-hidden rounded-3xl p-6 ${entry.rank <= 3
+                                className={`relative overflow-hidden rounded-3xl p-6 cursor-pointer hover:scale-105 group ${entry.rank <= 3
                                     ? `bg-gradient-to-r ${getRankColor(entry.rank)} text-white shadow-2xl`
                                     : 'bg-white shadow-xl hover:shadow-2xl'
-                                    } transition-all duration-300 hover:scale-105`}
+                                    } transition-all duration-300`}
+                                onClick={() => {
+                                    // ADDED: Click to view identity details
+                                    window.location.href = `/identity/${entry.tokenId}`
+                                }}
                             >
                                 <div className="flex items-center space-x-6">
                                     <div className="flex-shrink-0">
@@ -185,6 +219,7 @@ export default function LeaderboardPage() {
                                         </p>
                                     </div>
 
+                                    {/* UPDATED: Stats with price changes */}
                                     <div className="flex items-center space-x-8">
                                         <div className="text-center">
                                             <div className={`text-2xl font-bold ${entry.rank <= 3 ? 'text-white' : 'text-purple-600'
@@ -207,7 +242,47 @@ export default function LeaderboardPage() {
                                                 Achievements
                                             </div>
                                         </div>
+
+                                        {/* ADDED: Price change indicator */}
+                                        <div className="text-center">
+                                            {priceChanges[entry.tokenId] ? (
+                                                <>
+                                                    <div className={`text-lg font-bold flex items-center justify-center ${priceChanges[entry.tokenId].trend === 'up' ? 'text-green-400' :
+                                                        priceChanges[entry.tokenId].trend === 'down' ? 'text-red-400' :
+                                                            entry.rank <= 3 ? 'text-white' : 'text-gray-600'
+                                                        }`}>
+                                                        {priceChanges[entry.tokenId].trend === 'up' && <TrendingUp className="w-4 h-4 mr-1" />}
+                                                        {priceChanges[entry.tokenId].trend === 'down' && <TrendingDown className="w-4 h-4 mr-1" />}
+                                                        {priceChanges[entry.tokenId].change >= 0 ? '+' : ''}
+                                                        {priceChanges[entry.tokenId].change}%
+                                                    </div>
+                                                    <div className={`text-xs ${entry.rank <= 3 ? 'text-white/80' : 'text-gray-500'
+                                                        }`}>
+                                                        24h Change
+                                                    </div>
+                                                </>
+                                            ) : (
+                                                <>
+                                                    <div className={`text-lg font-bold ${entry.rank <= 3 ? 'text-white' : 'text-gray-600'
+                                                        }`}>
+                                                        --
+                                                    </div>
+                                                    <div className={`text-xs ${entry.rank <= 3 ? 'text-white/80' : 'text-gray-500'
+                                                        }`}>
+                                                        24h Change
+                                                    </div>
+                                                </>
+                                            )}
+                                        </div>
                                     </div>
+                                </div>
+
+                                {/* ADDED: Click indicator */}
+                                <div className={`absolute top-4 right-4 opacity-0 group-hover:opacity-100 transition-opacity ${entry.rank <= 3 ? 'text-white/60' : 'text-gray-400'
+                                    }`}>
+                                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                                    </svg>
                                 </div>
                             </motion.div>
                         ))

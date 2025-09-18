@@ -1,9 +1,15 @@
 import express, { Request, Response } from 'express';
 import Identity from '../models/Identity';
+import NFTTransfer from '../models/NFTTransfer';
+import AchievementHistory from '../models/AchievementHistory';
+import GoalProgress from '../models/GoalProgress';
+import PriceHistory from '../models/PriceHistory';
 import { authenticateToken, AuthenticatedRequest } from '../middleware/auth';
 import BlockchainSyncService from '../services/blockchain-sync';
 
 const router = express.Router();
+
+// ==================== EXISTING ROUTES (Enhanced) ====================
 
 // Enhanced: Get all identities with optional blockchain verification
 router.get('/', async (req: Request, res: Response): Promise<void> => {
@@ -32,11 +38,9 @@ router.get('/', async (req: Request, res: Response): Promise<void> => {
                     if (!verification.correct && verification.blockchainTokenId) {
                         console.log(`🔧 Auto-fixing token ID mismatch for ${identity.ownerAddress}`);
 
-                        // Fix the token ID
                         const fixed = await BlockchainSyncService.fixAddressTokenId(identity.ownerAddress);
 
                         if (fixed) {
-                            // Update the returned data with correct token ID
                             identities[i] = {
                                 ...identity,
                                 tokenId: verification.blockchainTokenId,
@@ -73,6 +77,220 @@ router.get('/', async (req: Request, res: Response): Promise<void> => {
     }
 });
 
+
+
+// Get portfolio data for an address
+router.get('/blockchain/:address', async (req: Request, res: Response): Promise<void> => {
+    try {
+        const { address } = req.params;
+
+        console.log(`🔍 Fetching identity for address: ${address}`);
+
+        // Step 1: Check database first for username
+        let dbIdentity = await Identity.findOne({ ownerAddress: address.toLowerCase() });
+
+        // Step 2: Get blockchain data
+        const blockchainIdentity = await BlockchainSyncService.getBlockchainIdentity(address);
+
+        if (!blockchainIdentity) {
+            console.log(`❌ No identity found on blockchain for: ${address}`);
+            res.json({
+                success: false,
+                error: 'No identity found on blockchain for this address'
+            });
+            return;
+        }
+
+        // Step 3: If we have DB identity, use its username; otherwise use blockchain/fallback
+        let finalUsername = `User #${blockchainIdentity.tokenId}`; // Fallback
+
+        if (dbIdentity && dbIdentity.username) {
+            finalUsername = dbIdentity.username;
+            console.log(`✅ Using database username: ${finalUsername}`);
+        } else if (blockchainIdentity.username && !blockchainIdentity.username.startsWith('Identity #')) {
+            finalUsername = blockchainIdentity.username;
+            console.log(`✅ Using blockchain username: ${finalUsername}`);
+        }
+
+        // Step 4: If no DB identity exists, create one
+        if (!dbIdentity) {
+            console.log(`📝 Creating database entry for Token #${blockchainIdentity.tokenId}`);
+
+            try {
+                dbIdentity = new Identity({
+                    tokenId: blockchainIdentity.tokenId,
+                    username: finalUsername,
+                    primarySkill: blockchainIdentity.primarySkill,
+                    ownerAddress: blockchainIdentity.ownerAddress,
+                    experience: 'beginner',
+                    reputationScore: blockchainIdentity.reputationScore,
+                    skillLevel: blockchainIdentity.skillLevel,
+                    achievementCount: blockchainIdentity.achievementCount,
+                    isVerified: true, // Set to true since it's on blockchain
+                    nftBasePrice: 10,
+                    currentPrice: 10,
+                    profile: {
+                        bio: `Welcome ${finalUsername}! Your journey on SomniaID begins now.`,
+                        skills: [],
+                        achievements: [],
+                        goals: [],
+                        socialLinks: {},
+                        education: [],
+                        workExperience: []
+                    },
+                    profileViews: 0,
+                    followers: [],
+                    following: [],
+                    lastUpdate: blockchainIdentity.lastUpdate || Date.now(),
+                    lastMetadataUpdate: Date.now()
+                });
+
+                await dbIdentity.save();
+                console.log(`✅ Created database entry for Token #${blockchainIdentity.tokenId}: ${finalUsername}`);
+            } catch (createError: any) {
+                console.error('Error creating database entry:', createError);
+                // Continue with blockchain data even if DB creation fails
+            }
+        } else {
+            // Update existing DB identity with blockchain data
+            console.log(`📝 Updating existing database identity`);
+
+            dbIdentity.tokenId = blockchainIdentity.tokenId;
+            dbIdentity.reputationScore = blockchainIdentity.reputationScore;
+            dbIdentity.skillLevel = blockchainIdentity.skillLevel;
+            dbIdentity.achievementCount = blockchainIdentity.achievementCount;
+            dbIdentity.isVerified = true; // Mark as verified
+            dbIdentity.lastUpdate = blockchainIdentity.lastUpdate || Date.now();
+            dbIdentity.updatedAt = new Date();
+
+            try {
+                await dbIdentity.save();
+                console.log(`✅ Updated database identity: ${dbIdentity.username}`);
+            } catch (updateError) {
+                console.error('Error updating database identity:', updateError);
+            }
+        }
+
+        // Step 5: Return merged identity with proper username
+        const mergedIdentity = {
+            tokenId: blockchainIdentity.tokenId,
+            username: finalUsername, // THE REAL USERNAME
+            primarySkill: blockchainIdentity.primarySkill,
+            ownerAddress: blockchainIdentity.ownerAddress,
+            reputationScore: blockchainIdentity.reputationScore,
+            skillLevel: blockchainIdentity.skillLevel,
+            achievementCount: blockchainIdentity.achievementCount,
+            isVerified: true, // Always true if on blockchain
+            lastUpdate: blockchainIdentity.lastUpdate,
+            experience: dbIdentity?.experience || 'beginner',
+            currentPrice: dbIdentity?.currentPrice || 10,
+            basePrice: dbIdentity?.nftBasePrice || 10,
+            priceMultiplier: 100, // Default multiplier
+            profile: dbIdentity?.profile || {
+                bio: '',
+                skills: [],
+                achievements: [],
+                goals: [],
+                socialLinks: {},
+                education: [],
+                workExperience: []
+            },
+            profileViews: dbIdentity?.profileViews || 0,
+            followers: dbIdentity?.followers || [],
+            following: dbIdentity?.following || [],
+            txHash: dbIdentity?.txHash,
+            createdAt: dbIdentity?.createdAt,
+            source: 'blockchain-enhanced',
+            blockchainVerified: true,
+            dbSynced: true,
+            syncedAt: new Date()
+        };
+
+        console.log(`✅ Returning identity: Token #${mergedIdentity.tokenId} → ${mergedIdentity.username}`);
+
+        res.json({
+            success: true,
+            identity: mergedIdentity
+        });
+
+    } catch (error: unknown) {
+        console.error('Blockchain lookup error:', error);
+        res.status(500).json({
+            success: false,
+            error: error instanceof Error ? error.message : 'Failed to lookup blockchain identity'
+        });
+    }
+});
+
+// Get enhanced identity data with history
+router.get('/enhanced/:tokenId', async (req: Request, res: Response): Promise<void> => {
+    try {
+        const tokenId = parseInt(req.params.tokenId);
+
+        if (isNaN(tokenId)) {
+            res.status(400).json({
+                success: false,
+                error: 'Invalid token ID'
+            });
+            return;
+        }
+
+        // Get base identity
+        const identity = await Identity.findOne({ tokenId }).lean();
+        if (!identity) {
+            res.status(404).json({
+                success: false,
+                error: 'Identity not found'
+            });
+            return;
+        }
+
+        // Get related data in parallel
+        const [achievementHistory, goalProgress, priceHistory, transferHistory] = await Promise.all([
+            AchievementHistory.find({ token_id: tokenId }).sort({ timestamp: -1 }).lean(),
+            GoalProgress.find({ token_id: tokenId }).sort({ deadline: 1 }).lean(),
+            PriceHistory.find({ token_id: tokenId }).sort({ timestamp: -1 }).limit(50).lean(),
+            NFTTransfer.find({ token_id: tokenId }).sort({ timestamp: -1 }).lean()
+        ]);
+
+        // Calculate analytics
+        const totalVolume = transferHistory.reduce((sum, t) => sum + t.price, 0);
+        const priceChangePercent = priceHistory.length > 1
+            ? ((priceHistory[0].new_price - priceHistory[priceHistory.length - 1].old_price) / priceHistory[priceHistory.length - 1].old_price) * 100
+            : 0;
+
+        const enhancedIdentity = {
+            ...identity,
+            achievementHistory,
+            goalProgress,
+            priceHistory,
+            transferHistory,
+            analytics: {
+                totalVolume,
+                priceChangePercent,
+                averagePrice: totalVolume / Math.max(1, transferHistory.length),
+                completedGoals: goalProgress.filter(g => g.completed).length,
+                failedGoals: goalProgress.filter(g => g.failed).length,
+                verifiedAchievements: achievementHistory.filter((a: any) => a.verified).length
+            }
+        };
+
+        res.json({
+            success: true,
+            identity: enhancedIdentity
+        });
+
+    } catch (error) {
+        console.error('Error fetching enhanced identity:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Failed to fetch enhanced identity data'
+        });
+    }
+});
+
+// ==================== EXISTING ROUTES (Keep as is) ====================
+
 // Get identity with blockchain-first approach
 router.get('/blockchain/:address', async (req: Request, res: Response): Promise<void> => {
     try {
@@ -80,7 +298,6 @@ router.get('/blockchain/:address', async (req: Request, res: Response): Promise<
 
         console.log(`🔍 Universal blockchain lookup for address: ${address}`);
 
-        // Step 1: Get identity from blockchain (works for any token ID)
         const blockchainIdentity = await BlockchainSyncService.getBlockchainIdentity(address);
 
         if (!blockchainIdentity) {
@@ -91,24 +308,22 @@ router.get('/blockchain/:address', async (req: Request, res: Response): Promise<
             return;
         }
 
-        // Step 2: Check if database entry exists
         let dbIdentity = await Identity.findOne({ ownerAddress: address.toLowerCase() });
 
-        // Step 3: AUTO-CREATE missing database entry for ANY token
         if (!dbIdentity) {
             console.log(`📝 Auto-creating database entry for Token #${blockchainIdentity.tokenId}`);
 
             try {
                 dbIdentity = new Identity({
-                    tokenId: blockchainIdentity.tokenId, // Uses actual token ID from blockchain
-                    username: `User${blockchainIdentity.tokenId}`, // Dynamic username
+                    tokenId: blockchainIdentity.tokenId,
+                    username: `User${blockchainIdentity.tokenId}`,
                     primarySkill: blockchainIdentity.primarySkill,
                     ownerAddress: blockchainIdentity.ownerAddress,
                     experience: 'beginner',
                     reputationScore: blockchainIdentity.reputationScore,
                     skillLevel: blockchainIdentity.skillLevel,
                     achievementCount: blockchainIdentity.achievementCount,
-                    isVerified: true, // Auto-verify if exists on blockchain
+                    isVerified: true,
                     nftBasePrice: 10,
                     currentPrice: 10,
                     profile: {
@@ -131,13 +346,10 @@ router.get('/blockchain/:address', async (req: Request, res: Response): Promise<
                 console.log(`✅ Auto-created database entry for Token #${blockchainIdentity.tokenId}`);
             } catch (createError) {
                 console.error('Error auto-creating database entry:', createError);
-                // Continue with blockchain-only data if database creation fails
             }
         }
 
-        // Step 4: Return merged data (works for any token)
         const mergedIdentity = {
-            // Blockchain data (source of truth)
             tokenId: blockchainIdentity.tokenId,
             ownerAddress: blockchainIdentity.ownerAddress,
             reputationScore: blockchainIdentity.reputationScore,
@@ -145,9 +357,7 @@ router.get('/blockchain/:address', async (req: Request, res: Response): Promise<
             achievementCount: blockchainIdentity.achievementCount,
             lastUpdate: blockchainIdentity.lastUpdate,
             primarySkill: blockchainIdentity.primarySkill,
-            isVerified: true, // Auto-verify if exists on blockchain
-
-            // Database data (or defaults)
+            isVerified: true,
             username: dbIdentity?.username || `User${blockchainIdentity.tokenId}`,
             experience: dbIdentity?.experience || 'beginner',
             profile: dbIdentity?.profile || {
@@ -164,8 +374,6 @@ router.get('/blockchain/:address', async (req: Request, res: Response): Promise<
             following: dbIdentity?.following || [],
             txHash: dbIdentity?.txHash,
             createdAt: dbIdentity?.createdAt,
-
-            // Metadata
             source: 'blockchain',
             blockchainVerified: true,
             dbSynced: !!dbIdentity,
@@ -222,76 +430,7 @@ router.get('/:tokenId', async (req: Request, res: Response): Promise<void> => {
     }
 });
 
-router.get('/', async (req: Request, res: Response): Promise<void> => {
-    try {
-        const page = parseInt(req.query.page as string) || 1;
-        const limit = parseInt(req.query.limit as string) || 20;
-        const verifyBlockchain = req.query.verifyBlockchain === 'true';
-        const skip = (page - 1) * limit;
-
-        let identities = await Identity.find()
-            .sort({ reputationScore: -1, createdAt: -1 })
-            .skip(skip)
-            .limit(limit)
-            .lean();
-
-        // Auto-fix token ID mismatches if verification requested
-        if (verifyBlockchain) {
-            console.log('🔍 Verifying blockchain sync for identities...');
-
-            for (let i = 0; i < identities.length; i++) {
-                const identity = identities[i];
-
-                try {
-                    const verification = await BlockchainSyncService.verifyAddressTokenId(identity.ownerAddress);
-
-                    if (!verification.correct && verification.blockchainTokenId) {
-                        console.log(`🔧 Auto-fixing token ID mismatch for ${identity.ownerAddress}`);
-
-                        // Fix the token ID
-                        const fixed = await BlockchainSyncService.fixAddressTokenId(identity.ownerAddress);
-
-                        if (fixed) {
-                            // Update the returned data with correct token ID
-                            identities[i] = {
-                                ...identity,
-                                tokenId: verification.blockchainTokenId,
-                                lastMetadataUpdate: Date.now()
-                            };
-                        }
-                    }
-                } catch (syncError) {
-                    console.error(`Sync error for ${identity.ownerAddress}:`, syncError);
-                }
-            }
-        }
-
-        const total = await Identity.countDocuments();
-
-        res.json({
-            success: true,
-            identities,
-            blockchainVerified: verifyBlockchain,
-            pagination: {
-                currentPage: page,
-                totalPages: Math.ceil(total / limit),
-                totalItems: total,
-                hasNext: page * limit < total,
-                hasPrev: page > 1
-            }
-        });
-    } catch (error) {
-        console.error('Error fetching identities:', error);
-        res.status(500).json({
-            success: false,
-            error: 'Failed to fetch identities'
-        });
-    }
-});
-
-
-// route to check if token is listed
-
+// Route to check if token is listed
 router.get('/listing/:tokenId', async (req: Request, res: Response): Promise<void> => {
     try {
         const tokenId = parseInt(req.params.tokenId);
@@ -304,14 +443,10 @@ router.get('/listing/:tokenId', async (req: Request, res: Response): Promise<voi
             return;
         }
 
-        // Use your blockchain sync service to check listing
-        const blockchainIdentity = await BlockchainSyncService.getBlockchainIdentity('0x0941c361bbe04e739fAB4Fbac2E4b3A72EdC810C'); // You'd need to get owner first
-
-        // For now, let's create a simple response
         res.json({
             success: true,
             tokenId: tokenId,
-            listed: false, // We'll update this after testing
+            listed: false,
             price: "0"
         });
     } catch (error: any) {
@@ -322,12 +457,12 @@ router.get('/listing/:tokenId', async (req: Request, res: Response): Promise<voi
     }
 });
 
+// Debug endpoint
 router.get('/debug/:tokenId/:address', async (req: Request, res: Response): Promise<void> => {
     try {
         const tokenId = parseInt(req.params.tokenId);
         const address = req.params.address;
 
-        // Get blockchain identity to verify contract connection
         const blockchainIdentity = await BlockchainSyncService.getBlockchainIdentity(address);
 
         if (!blockchainIdentity) {
@@ -338,7 +473,6 @@ router.get('/debug/:tokenId/:address', async (req: Request, res: Response): Prom
             return;
         }
 
-        // Return debug information
         res.json({
             success: true,
             debug: {
@@ -357,7 +491,7 @@ router.get('/debug/:tokenId/:address', async (req: Request, res: Response): Prom
     }
 });
 
-// FIXED: Create identity with proper token ID generation
+// Create identity with proper token ID generation
 router.post('/create', async (req: Request, res: Response): Promise<void> => {
     try {
         console.log('=== CREATE IDENTITY WITH BLOCKCHAIN SYNC ===');
@@ -371,7 +505,6 @@ router.post('/create', async (req: Request, res: Response): Promise<void> => {
             return;
         }
 
-        // Check if username already exists
         const existingIdentity = await Identity.findOne({ username });
         if (existingIdentity) {
             res.status(400).json({
@@ -383,7 +516,6 @@ router.post('/create', async (req: Request, res: Response): Promise<void> => {
 
         let tokenId: number;
 
-        // FIXED: Get token ID from blockchain if address provided
         if (ownerAddress && txHash) {
             console.log('🔍 Getting token ID from blockchain...');
 
@@ -394,21 +526,18 @@ router.post('/create', async (req: Request, res: Response): Promise<void> => {
                     tokenId = blockchainIdentity.tokenId;
                     console.log(`✅ Using blockchain token ID: ${tokenId}`);
                 } else {
-                    // Fallback: generate temporary token ID, will be synced later
                     tokenId = Math.floor(Date.now() / 1000);
-                    console.log(`⚠️  Blockchain identity not found, using temporary ID: ${tokenId}`);
+                    console.log(`⚠️ Blockchain identity not found, using temporary ID: ${tokenId}`);
                 }
             } catch (error) {
                 console.error('Error fetching blockchain token ID:', error);
                 tokenId = Math.floor(Date.now() / 1000);
             }
         } else {
-            // No blockchain data, generate temporary ID
             tokenId = Math.floor(Date.now() / 1000);
             console.log(`📝 Using temporary token ID: ${tokenId}`);
         }
 
-        // Parse profile data
         let profileData: any = {};
         if (bio && typeof bio === 'string' && bio.startsWith('{')) {
             try {
@@ -420,7 +549,6 @@ router.post('/create', async (req: Request, res: Response): Promise<void> => {
             profileData = { profile: { bio: bio || '' } };
         }
 
-        // Create identity
         const identityData = {
             tokenId,
             username,
@@ -430,7 +558,7 @@ router.post('/create', async (req: Request, res: Response): Promise<void> => {
             reputationScore: profileData.reputationScore || 100,
             skillLevel: profileData.skillLevel || 1,
             achievementCount: profileData.profile?.achievements?.length || 0,
-            isVerified: !!txHash, // Auto-verify if transaction hash provided
+            isVerified: !!txHash,
             currentPrice: 10,
             nftBasePrice: 10,
             profile: {
@@ -454,9 +582,7 @@ router.post('/create', async (req: Request, res: Response): Promise<void> => {
 
         console.log(`✅ Identity created with token ID: ${tokenId}`);
 
-        // If we have an owner address, schedule a sync check
         if (ownerAddress && txHash) {
-            // Schedule sync verification in 10 seconds
             setTimeout(async () => {
                 console.log('🔍 Verifying token ID sync...');
                 const verification = await BlockchainSyncService.verifyAddressTokenId(ownerAddress);
@@ -482,13 +608,12 @@ router.post('/create', async (req: Request, res: Response): Promise<void> => {
     }
 });
 
-// NEW: Manual sync endpoint
+// Manual sync endpoint
 router.post('/sync-blockchain', async (req: Request, res: Response): Promise<void> => {
     try {
         const { address } = req.body;
 
         if (address) {
-            // Sync specific address
             const fixed = await BlockchainSyncService.fixAddressTokenId(address);
 
             res.json({
@@ -497,7 +622,6 @@ router.post('/sync-blockchain', async (req: Request, res: Response): Promise<voi
                 fixed
             });
         } else {
-            // Sync all identities
             await BlockchainSyncService.syncAllIdentities();
 
             res.json({
@@ -552,8 +676,7 @@ router.put('/:tokenId', authenticateToken, async (req: AuthenticatedRequest, res
     }
 });
 
-// Universal username update (no authentication required for now)
-
+// Universal username update
 router.put('/update-username', async (req: Request, res: Response): Promise<void> => {
     try {
         const { ownerAddress, username } = req.body;

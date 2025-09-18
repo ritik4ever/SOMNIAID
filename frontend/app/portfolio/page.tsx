@@ -3,9 +3,10 @@
 import { useState, useEffect } from 'react'
 import { motion } from 'framer-motion'
 import { TrendingUp, TrendingDown, Wallet, Star, ShoppingCart, Eye, ExternalLink, Plus, Minus } from 'lucide-react'
-import { useAccount } from 'wagmi'
+import { useAccount, useReadContract } from 'wagmi'
+import { formatEther } from 'viem'
 import Link from 'next/link'
-import { api } from '@/utils/api'
+import { CONTRACT_ABI, CONTRACT_ADDRESS } from '@/utils/contract'
 
 interface PortfolioItem {
     tokenId: number
@@ -34,85 +35,147 @@ export default function PortfolioPage() {
 
     const { address, isConnected } = useAccount()
 
+    // ADDED: Get user's balance from contract
+    const { data: balance, refetch: refetchBalance } = useReadContract({
+        address: CONTRACT_ADDRESS,
+        abi: CONTRACT_ABI,
+        functionName: 'balanceOf',
+        args: address ? [address] : undefined,
+        query: { enabled: !!address && !!CONTRACT_ADDRESS }
+    })
+
+    // Helper function to safely format dates
+    const formatDate = (date: any) => {
+        if (!date) return 'Unknown'
+        try {
+            const dateObj = typeof date === 'string' ? new Date(date) : date
+            return dateObj.toLocaleDateString()
+        } catch (error) {
+            return 'Invalid Date'
+        }
+    }
+
+    // ADDED: Listen for portfolio refresh events
+    useEffect(() => {
+        const handlePortfolioRefresh = () => {
+            console.log('Portfolio refresh event received')
+            refetchBalance()
+            if (address) {
+                loadRealPortfolio()
+            }
+        }
+
+        window.addEventListener('portfolioRefresh', handlePortfolioRefresh)
+        return () => window.removeEventListener('portfolioRefresh', handlePortfolioRefresh)
+    }, [address, refetchBalance])
+
     useEffect(() => {
         if (isConnected && address) {
-            loadPortfolio()
+            loadRealPortfolio()
         }
-    }, [isConnected, address])
+    }, [isConnected, address, balance])
 
-    const loadPortfolio = async () => {
+    // ADDED: Load real portfolio data from contract
+    console.log('Using contract address:', CONTRACT_ADDRESS)
+    console.log('User address:', address)
+
+
+    const loadRealPortfolio = async () => {
         try {
-            setLoading(true)
+            setLoading(true);
 
-            // In a real app, this would fetch user's owned NFTs from the backend
-            // For demo, we'll simulate a portfolio
-            const demoPortfolio: PortfolioItem[] = [
-                {
-                    tokenId: 1001,
-                    username: 'CryptoBuilder',
-                    primarySkill: 'Smart Contract Development',
-                    reputationScore: 850,
-                    currentPrice: 45.5,
-                    purchasePrice: 38.2,
-                    purchaseDate: new Date('2024-08-15'),
-                    priceChange: 7.3,
-                    priceChangePercent: 19.11,
-                    isVerified: true,
-                    skillLevel: 4,
-                    achievementCount: 12,
-                    dailyVolume: 2.3,
-                    weeklyChange: 12.5
-                },
-                {
-                    tokenId: 1002,
-                    username: 'NFTArtist',
-                    primarySkill: 'NFT Creation',
-                    reputationScore: 650,
-                    currentPrice: 28.9,
-                    purchasePrice: 32.1,
-                    purchaseDate: new Date('2024-08-20'),
-                    priceChange: -3.2,
-                    priceChangePercent: -9.97,
-                    isVerified: true,
-                    skillLevel: 3,
-                    achievementCount: 8,
-                    dailyVolume: 1.8,
-                    weeklyChange: -5.2
-                },
-                {
-                    tokenId: 1003,
-                    username: 'DeFiTrader',
-                    primarySkill: 'DeFi Protocol Design',
-                    reputationScore: 720,
-                    currentPrice: 67.2,
-                    purchasePrice: 55.8,
-                    purchaseDate: new Date('2024-08-10'),
-                    priceChange: 11.4,
-                    priceChangePercent: 20.43,
-                    isVerified: false,
-                    skillLevel: 3,
-                    achievementCount: 15,
-                    dailyVolume: 4.1,
-                    weeklyChange: 18.7
-                }
-            ]
+            if (!address) {
+                setPortfolio([]);
+                setLoading(false);
+                return;
+            }
 
-            setPortfolio(demoPortfolio)
+            // Use enhanced portfolio API
+            const response = await fetch(`/api/portfolio/${address}`);
+            const data = await response.json();
 
-            // Calculate totals
-            const totalCurrentValue = demoPortfolio.reduce((sum, item) => sum + item.currentPrice, 0)
-            const totalInvestedValue = demoPortfolio.reduce((sum, item) => sum + item.purchasePrice, 0)
-            const totalPnLValue = totalCurrentValue - totalInvestedValue
-
-            setTotalValue(totalCurrentValue)
-            setTotalInvested(totalInvestedValue)
-            setTotalPnL(totalPnLValue)
+            if (data.success && data.ownedNFTs && data.ownedNFTs.length > 0) {
+                setPortfolio(data.ownedNFTs);
+                setTotalValue(data.totalValue);
+                setTotalInvested(data.totalInvested);
+                setTotalPnL(data.totalPnL);
+            } else {
+                setPortfolio([]);
+                setTotalValue(0);
+                setTotalInvested(0);
+                setTotalPnL(0);
+            }
 
         } catch (error) {
-            console.error('Error loading portfolio:', error)
+            console.error('Error loading portfolio:', error);
+            setPortfolio([]);
         } finally {
-            setLoading(false)
+            setLoading(false);
         }
+    };
+
+    // Keep original demo data as fallback
+    const loadDemoPortfolio = () => {
+        const demoPortfolio: PortfolioItem[] = [
+            {
+                tokenId: 1001,
+                username: 'CryptoBuilder',
+                primarySkill: 'Smart Contract Development',
+                reputationScore: 850,
+                currentPrice: 45.5,
+                purchasePrice: 38.2,
+                purchaseDate: new Date('2024-08-15'),
+                priceChange: 7.3,
+                priceChangePercent: 19.11,
+                isVerified: true,
+                skillLevel: 4,
+                achievementCount: 12,
+                dailyVolume: 2.3,
+                weeklyChange: 12.5
+            },
+            {
+                tokenId: 1002,
+                username: 'NFTArtist',
+                primarySkill: 'NFT Creation',
+                reputationScore: 650,
+                currentPrice: 28.9,
+                purchasePrice: 32.1,
+                purchaseDate: new Date('2024-08-20'),
+                priceChange: -3.2,
+                priceChangePercent: -9.97,
+                isVerified: true,
+                skillLevel: 3,
+                achievementCount: 8,
+                dailyVolume: 1.8,
+                weeklyChange: -5.2
+            },
+            {
+                tokenId: 1003,
+                username: 'DeFiTrader',
+                primarySkill: 'DeFi Protocol Design',
+                reputationScore: 720,
+                currentPrice: 67.2,
+                purchasePrice: 55.8,
+                purchaseDate: new Date('2024-08-10'),
+                priceChange: 11.4,
+                priceChangePercent: 20.43,
+                isVerified: false,
+                skillLevel: 3,
+                achievementCount: 15,
+                dailyVolume: 4.1,
+                weeklyChange: 18.7
+            }
+        ]
+
+        setPortfolio(demoPortfolio)
+
+        const totalCurrentValue = demoPortfolio.reduce((sum, item) => sum + item.currentPrice, 0)
+        const totalInvestedValue = demoPortfolio.reduce((sum, item) => sum + item.purchasePrice, 0)
+        const totalPnLValue = totalCurrentValue - totalInvestedValue
+
+        setTotalValue(totalCurrentValue)
+        setTotalInvested(totalInvestedValue)
+        setTotalPnL(totalPnLValue)
     }
 
     if (!isConnected) {
@@ -165,8 +228,12 @@ export default function PortfolioPage() {
                             <h3 className="text-sm font-medium text-gray-600">Total Value</h3>
                             <Wallet className="w-5 h-5 text-blue-600" />
                         </div>
-                        <div className="text-2xl font-bold text-gray-900">{totalValue.toFixed(2)} STT</div>
-                        <div className="text-sm text-gray-500">~${(totalValue * 0.1).toFixed(2)} USD</div>
+                        <div className="text-2xl font-bold text-gray-900">
+                            {totalValue.toFixed(4)} STT
+                        </div>
+                        <div className="text-sm text-gray-500">
+                            ~${(totalValue * 4.5).toFixed(2)} USD
+                        </div>
                     </motion.div>
 
                     <motion.div
@@ -179,8 +246,12 @@ export default function PortfolioPage() {
                             <h3 className="text-sm font-medium text-gray-600">Total Invested</h3>
                             <ShoppingCart className="w-5 h-5 text-gray-600" />
                         </div>
-                        <div className="text-2xl font-bold text-gray-900">{totalInvested.toFixed(2)} STT</div>
-                        <div className="text-sm text-gray-500">~${(totalInvested * 0.1).toFixed(2)} USD</div>
+                        <div className="text-2xl font-bold text-gray-900">
+                            {totalInvested.toFixed(4)} STT
+                        </div>
+                        <div className="text-sm text-gray-500">
+                            ~${(totalInvested * 4.5).toFixed(2)} USD
+                        </div>
                     </motion.div>
 
                     <motion.div
@@ -198,10 +269,10 @@ export default function PortfolioPage() {
                             )}
                         </div>
                         <div className={`text-2xl font-bold ${totalPnL >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                            {totalPnL >= 0 ? '+' : ''}{totalPnL.toFixed(2)} STT
+                            {totalPnL >= 0 ? '+' : ''}{totalPnL.toFixed(4)} STT
                         </div>
                         <div className={`text-sm ${totalPnL >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                            {totalPnL >= 0 ? '+' : ''}{((totalPnL / totalInvested) * 100).toFixed(2)}%
+                            {totalPnL >= 0 ? '+' : ''}{totalInvested > 0 ? ((totalPnL / totalInvested) * 100).toFixed(2) : '0.00'}%
                         </div>
                     </motion.div>
 
@@ -254,7 +325,12 @@ export default function PortfolioPage() {
                         <div className="p-12 text-center">
                             <ShoppingCart className="w-16 h-16 text-gray-400 mx-auto mb-4" />
                             <h3 className="text-xl font-semibold text-gray-700 mb-2">No NFTs in portfolio</h3>
-                            <p className="text-gray-500 mb-6">Start building your collection by purchasing NFTs from the marketplace</p>
+                            <p className="text-gray-500 mb-6">
+                                {balance && Number(balance) === 0 ?
+                                    "You don't own any SomniaID NFTs yet. Start building your collection!" :
+                                    "Loading your NFTs..."
+                                }
+                            </p>
                             <Link
                                 href="/marketplace"
                                 className="bg-gradient-to-r from-blue-600 to-purple-600 text-white px-6 py-3 rounded-xl font-semibold hover:shadow-lg transition-all duration-300"
@@ -294,7 +370,13 @@ export default function PortfolioPage() {
                                             initial={{ opacity: 0, x: -20 }}
                                             animate={{ opacity: 1, x: 0 }}
                                             transition={{ delay: index * 0.1 }}
-                                            className="hover:bg-gray-50"
+                                            className="hover:bg-gray-50 cursor-pointer"
+                                            onClick={() => {
+                                                // ADDED: Click to view NFT details
+                                                if (item.tokenId < 1000) {
+                                                    window.location.href = `/identity/${item.tokenId}`
+                                                }
+                                            }}
                                         >
                                             <td className="px-6 py-4 whitespace-nowrap">
                                                 <div className="flex items-center space-x-3">
@@ -309,6 +391,10 @@ export default function PortfolioPage() {
                                                             {item.isVerified && (
                                                                 <span className="text-green-600">✓</span>
                                                             )}
+                                                            {/* ADDED: Real vs Demo indicator */}
+                                                            {item.tokenId >= 1000 && (
+                                                                <span className="text-xs bg-gray-200 text-gray-600 px-2 py-1 rounded">Demo</span>
+                                                            )}
                                                         </div>
                                                         <div className="text-sm text-gray-500">#{item.tokenId}</div>
                                                     </div>
@@ -316,24 +402,24 @@ export default function PortfolioPage() {
                                             </td>
                                             <td className="px-6 py-4 whitespace-nowrap">
                                                 <div className="text-sm font-medium text-gray-900">
-                                                    {item.currentPrice.toFixed(2)} STT
+                                                    {item.currentPrice.toFixed(4)} STT
                                                 </div>
                                                 <div className="text-sm text-gray-500">
-                                                    ${(item.currentPrice * 0.1).toFixed(2)}
+                                                    ${(item.currentPrice * 4.5).toFixed(2)}
                                                 </div>
                                             </td>
                                             <td className="px-6 py-4 whitespace-nowrap">
                                                 <div className="text-sm text-gray-900">
-                                                    {item.purchasePrice.toFixed(2)} STT
+                                                    {item.purchasePrice.toFixed(4)} STT
                                                 </div>
                                                 <div className="text-sm text-gray-500">
-                                                    {item.purchaseDate.toLocaleDateString()}
+                                                    {formatDate(item.purchaseDate)}
                                                 </div>
                                             </td>
                                             <td className="px-6 py-4 whitespace-nowrap">
                                                 <div className={`text-sm font-medium ${item.priceChange >= 0 ? 'text-green-600' : 'text-red-600'
                                                     }`}>
-                                                    {item.priceChange >= 0 ? '+' : ''}{item.priceChange.toFixed(2)} STT
+                                                    {item.priceChange >= 0 ? '+' : ''}{item.priceChange.toFixed(4)} STT
                                                 </div>
                                                 <div className={`text-sm ${item.priceChangePercent >= 0 ? 'text-green-600' : 'text-red-600'
                                                     }`}>
@@ -353,16 +439,23 @@ export default function PortfolioPage() {
                                             </td>
                                             <td className="px-6 py-4 whitespace-nowrap text-sm">
                                                 <div className="flex items-center space-x-2">
-                                                    <Link
-                                                        href={`/profile/${item.tokenId}`}
-                                                        className="text-blue-600 hover:text-blue-700"
-                                                    >
-                                                        <Eye className="w-4 h-4" />
-                                                    </Link>
-                                                    <button className="text-green-600 hover:text-green-700">
+                                                    {item.tokenId < 1000 ? (
+                                                        <Link
+                                                            href={`/identity/${item.tokenId}`}
+                                                            className="text-blue-600 hover:text-blue-700"
+                                                            onClick={(e) => e.stopPropagation()}
+                                                        >
+                                                            <Eye className="w-4 h-4" />
+                                                        </Link>
+                                                    ) : (
+                                                        <span className="text-gray-400">
+                                                            <Eye className="w-4 h-4" />
+                                                        </span>
+                                                    )}
+                                                    <button className="text-green-600 hover:text-green-700" title="List for Sale">
                                                         <Plus className="w-4 h-4" />
                                                     </button>
-                                                    <button className="text-red-600 hover:text-red-700">
+                                                    <button className="text-red-600 hover:text-red-700" title="Transfer">
                                                         <Minus className="w-4 h-4" />
                                                     </button>
                                                 </div>
@@ -387,6 +480,10 @@ export default function PortfolioPage() {
                         <div className="text-center">
                             <TrendingUp className="w-12 h-12 text-gray-400 mx-auto mb-2" />
                             <p className="text-gray-500">Performance chart coming soon</p>
+                            {/* ADDED: Show total balance info */}
+                            <p className="text-sm text-gray-400 mt-2">
+                                {balance ? `You own ${Number(balance)} SomniaID NFT${Number(balance) === 1 ? '' : 's'}` : ''}
+                            </p>
                         </div>
                     </div>
                 </motion.div>

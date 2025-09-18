@@ -11,6 +11,8 @@ import connectDB from './config/database';
 import authRoutes from './routes/auth';
 import identityRoutes from './routes/identity';
 import achievementRoutes from './routes/achievements';
+import portfolioRoutes from './routes/portfolio';
+import goalsRoutes from './routes/goals';
 
 // Import all services
 import RealtimeService from './services/realtimeService';
@@ -18,6 +20,7 @@ import DynamicNFTService from './services/dynamicNFTService';
 import AchievementService from './services/achievementService';
 import VerificationService from './services/verificationService';
 import blockchainSync from './services/blockchain-sync';
+
 
 const app = express();
 const server = createServer(app);
@@ -109,6 +112,8 @@ app.use((req: any, res, next) => {
 app.use('/api/auth', authRoutes);
 app.use('/api/identity', identityRoutes);
 app.use('/api/achievements', achievementRoutes);
+app.use('/api/portfolio', portfolioRoutes);
+app.use('/api/goals', goalsRoutes);
 
 // Blockchain sync endpoints
 app.get('/api/blockchain/status', (req, res) => {
@@ -337,6 +342,8 @@ app.use('/api/*', (req, res) => {
             'POST /api/identity/sync-blockchain',
             'GET /api/achievements',
             'POST /api/achievements/create',
+            'GET /api/portfolio',
+            'GET /api/goals',
             'GET /api/blockchain/status',
             'POST /api/blockchain/reinitialize',
             'POST /api/blockchain/sync-all'
@@ -392,6 +399,10 @@ const initializeServices = () => {
         verificationService = new VerificationService();
 
         console.log('✅ All services initialized');
+
+        // Export services for use in routes (optional)
+        app.set('realtimeService', realtimeService);
+        app.set('nftService', dynamicNFTService);
 
         // Check blockchain sync status
         const blockchainStatus = blockchainSync.getServiceStatus();

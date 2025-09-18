@@ -5,6 +5,131 @@ export const CONTRACT_ABI = [
         "type": "constructor"
     },
     {
+        "inputs": [
+            {
+                "internalType": "address",
+                "name": "sender",
+                "type": "address"
+            },
+            {
+                "internalType": "uint256",
+                "name": "tokenId",
+                "type": "uint256"
+            },
+            {
+                "internalType": "address",
+                "name": "owner",
+                "type": "address"
+            }
+        ],
+        "name": "ERC721IncorrectOwner",
+        "type": "error"
+    },
+    {
+        "inputs": [
+            {
+                "internalType": "address",
+                "name": "operator",
+                "type": "address"
+            },
+            {
+                "internalType": "uint256",
+                "name": "tokenId",
+                "type": "uint256"
+            }
+        ],
+        "name": "ERC721InsufficientApproval",
+        "type": "error"
+    },
+    {
+        "inputs": [
+            {
+                "internalType": "address",
+                "name": "approver",
+                "type": "address"
+            }
+        ],
+        "name": "ERC721InvalidApprover",
+        "type": "error"
+    },
+    {
+        "inputs": [
+            {
+                "internalType": "address",
+                "name": "operator",
+                "type": "address"
+            }
+        ],
+        "name": "ERC721InvalidOperator",
+        "type": "error"
+    },
+    {
+        "inputs": [
+            {
+                "internalType": "address",
+                "name": "owner",
+                "type": "address"
+            }
+        ],
+        "name": "ERC721InvalidOwner",
+        "type": "error"
+    },
+    {
+        "inputs": [
+            {
+                "internalType": "address",
+                "name": "receiver",
+                "type": "address"
+            }
+        ],
+        "name": "ERC721InvalidReceiver",
+        "type": "error"
+    },
+    {
+        "inputs": [
+            {
+                "internalType": "address",
+                "name": "sender",
+                "type": "address"
+            }
+        ],
+        "name": "ERC721InvalidSender",
+        "type": "error"
+    },
+    {
+        "inputs": [
+            {
+                "internalType": "uint256",
+                "name": "tokenId",
+                "type": "uint256"
+            }
+        ],
+        "name": "ERC721NonexistentToken",
+        "type": "error"
+    },
+    {
+        "inputs": [
+            {
+                "internalType": "address",
+                "name": "owner",
+                "type": "address"
+            }
+        ],
+        "name": "OwnableInvalidOwner",
+        "type": "error"
+    },
+    {
+        "inputs": [
+            {
+                "internalType": "address",
+                "name": "account",
+                "type": "address"
+            }
+        ],
+        "name": "OwnableUnauthorizedAccount",
+        "type": "error"
+    },
+    {
         "anonymous": false,
         "inputs": [
             {
@@ -108,6 +233,25 @@ export const CONTRACT_ABI = [
                 "type": "uint256"
             },
             {
+                "indexed": false,
+                "internalType": "uint256",
+                "name": "goalIndex",
+                "type": "uint256"
+            }
+        ],
+        "name": "GoalCompleted",
+        "type": "event"
+    },
+    {
+        "anonymous": false,
+        "inputs": [
+            {
+                "indexed": true,
+                "internalType": "uint256",
+                "name": "tokenId",
+                "type": "uint256"
+            },
+            {
                 "indexed": true,
                 "internalType": "address",
                 "name": "owner",
@@ -137,12 +281,6 @@ export const CONTRACT_ABI = [
                 "internalType": "uint256",
                 "name": "price",
                 "type": "uint256"
-            },
-            {
-                "indexed": true,
-                "internalType": "address",
-                "name": "seller",
-                "type": "address"
             }
         ],
         "name": "IdentityListed",
@@ -177,25 +315,6 @@ export const CONTRACT_ABI = [
             }
         ],
         "name": "IdentityPurchased",
-        "type": "event"
-    },
-    {
-        "anonymous": false,
-        "inputs": [
-            {
-                "indexed": true,
-                "internalType": "uint256",
-                "name": "tokenId",
-                "type": "uint256"
-            },
-            {
-                "indexed": true,
-                "internalType": "address",
-                "name": "seller",
-                "type": "address"
-            }
-        ],
-        "name": "ListingCancelled",
         "type": "event"
     },
     {
@@ -242,17 +361,11 @@ export const CONTRACT_ABI = [
             {
                 "indexed": false,
                 "internalType": "uint256",
-                "name": "newScore",
-                "type": "uint256"
-            },
-            {
-                "indexed": false,
-                "internalType": "uint256",
-                "name": "timestamp",
+                "name": "newPrice",
                 "type": "uint256"
             }
         ],
-        "name": "ReputationUpdated",
+        "name": "PriceUpdated",
         "type": "event"
     },
     {
@@ -267,17 +380,11 @@ export const CONTRACT_ABI = [
             {
                 "indexed": false,
                 "internalType": "uint256",
-                "name": "newLevel",
+                "name": "newScore",
                 "type": "uint256"
-            },
-            {
-                "indexed": false,
-                "internalType": "string",
-                "name": "skill",
-                "type": "string"
             }
         ],
-        "name": "SkillLevelUp",
+        "name": "ReputationUpdated",
         "type": "event"
     },
     {
@@ -339,6 +446,11 @@ export const CONTRACT_ABI = [
                 "internalType": "uint256",
                 "name": "points",
                 "type": "uint256"
+            },
+            {
+                "internalType": "uint256",
+                "name": "priceImpact",
+                "type": "uint256"
             }
         ],
         "stateMutability": "view",
@@ -358,12 +470,17 @@ export const CONTRACT_ABI = [
             },
             {
                 "internalType": "string",
-                "name": "description",
+                "name": "desc",
                 "type": "string"
             },
             {
                 "internalType": "uint256",
                 "name": "points",
+                "type": "uint256"
+            },
+            {
+                "internalType": "uint256",
+                "name": "impact",
                 "type": "uint256"
             }
         ],
@@ -463,8 +580,13 @@ export const CONTRACT_ABI = [
             },
             {
                 "internalType": "string",
-                "name": "initialSkill",
+                "name": "skill",
                 "type": "string"
+            },
+            {
+                "internalType": "uint256",
+                "name": "price",
+                "type": "uint256"
             }
         ],
         "name": "createIdentity",
@@ -503,6 +625,11 @@ export const CONTRACT_ABI = [
                         "internalType": "uint256",
                         "name": "points",
                         "type": "uint256"
+                    },
+                    {
+                        "internalType": "uint256",
+                        "name": "priceImpact",
+                        "type": "uint256"
                     }
                 ],
                 "internalType": "struct SomniaID.Achievement[]",
@@ -527,6 +654,72 @@ export const CONTRACT_ABI = [
                 "internalType": "address",
                 "name": "",
                 "type": "address"
+            }
+        ],
+        "stateMutability": "view",
+        "type": "function"
+    },
+    {
+        "inputs": [
+            {
+                "internalType": "uint256",
+                "name": "tokenId",
+                "type": "uint256"
+            }
+        ],
+        "name": "getGoals",
+        "outputs": [
+            {
+                "components": [
+                    {
+                        "internalType": "string",
+                        "name": "title",
+                        "type": "string"
+                    },
+                    {
+                        "internalType": "string",
+                        "name": "description",
+                        "type": "string"
+                    },
+                    {
+                        "internalType": "uint256",
+                        "name": "deadline",
+                        "type": "uint256"
+                    },
+                    {
+                        "internalType": "uint256",
+                        "name": "targetValue",
+                        "type": "uint256"
+                    },
+                    {
+                        "internalType": "uint256",
+                        "name": "currentValue",
+                        "type": "uint256"
+                    },
+                    {
+                        "internalType": "bool",
+                        "name": "completed",
+                        "type": "bool"
+                    },
+                    {
+                        "internalType": "bool",
+                        "name": "failed",
+                        "type": "bool"
+                    },
+                    {
+                        "internalType": "uint256",
+                        "name": "rewardPoints",
+                        "type": "uint256"
+                    },
+                    {
+                        "internalType": "uint256",
+                        "name": "priceBonus",
+                        "type": "uint256"
+                    }
+                ],
+                "internalType": "struct SomniaID.Goal[]",
+                "name": "",
+                "type": "tuple[]"
             }
         ],
         "stateMutability": "view",
@@ -573,29 +766,21 @@ export const CONTRACT_ABI = [
                         "internalType": "bool",
                         "name": "isVerified",
                         "type": "bool"
+                    },
+                    {
+                        "internalType": "uint256",
+                        "name": "basePrice",
+                        "type": "uint256"
+                    },
+                    {
+                        "internalType": "uint256",
+                        "name": "currentPrice",
+                        "type": "uint256"
                     }
                 ],
                 "internalType": "struct SomniaID.Identity",
                 "name": "",
                 "type": "tuple"
-            }
-        ],
-        "stateMutability": "view",
-        "type": "function"
-    },
-    {
-        "inputs": [],
-        "name": "getListedIdentities",
-        "outputs": [
-            {
-                "internalType": "uint256[]",
-                "name": "tokenIds",
-                "type": "uint256[]"
-            },
-            {
-                "internalType": "uint256[]",
-                "name": "prices",
-                "type": "uint256[]"
             }
         ],
         "stateMutability": "view",
@@ -660,6 +845,70 @@ export const CONTRACT_ABI = [
     {
         "inputs": [
             {
+                "internalType": "uint256",
+                "name": "",
+                "type": "uint256"
+            },
+            {
+                "internalType": "uint256",
+                "name": "",
+                "type": "uint256"
+            }
+        ],
+        "name": "goals",
+        "outputs": [
+            {
+                "internalType": "string",
+                "name": "title",
+                "type": "string"
+            },
+            {
+                "internalType": "string",
+                "name": "description",
+                "type": "string"
+            },
+            {
+                "internalType": "uint256",
+                "name": "deadline",
+                "type": "uint256"
+            },
+            {
+                "internalType": "uint256",
+                "name": "targetValue",
+                "type": "uint256"
+            },
+            {
+                "internalType": "uint256",
+                "name": "currentValue",
+                "type": "uint256"
+            },
+            {
+                "internalType": "bool",
+                "name": "completed",
+                "type": "bool"
+            },
+            {
+                "internalType": "bool",
+                "name": "failed",
+                "type": "bool"
+            },
+            {
+                "internalType": "uint256",
+                "name": "rewardPoints",
+                "type": "uint256"
+            },
+            {
+                "internalType": "uint256",
+                "name": "priceBonus",
+                "type": "uint256"
+            }
+        ],
+        "stateMutability": "view",
+        "type": "function"
+    },
+    {
+        "inputs": [
+            {
                 "internalType": "address",
                 "name": "addr",
                 "type": "address"
@@ -715,6 +964,16 @@ export const CONTRACT_ABI = [
                 "internalType": "bool",
                 "name": "isVerified",
                 "type": "bool"
+            },
+            {
+                "internalType": "uint256",
+                "name": "basePrice",
+                "type": "uint256"
+            },
+            {
+                "internalType": "uint256",
+                "name": "currentPrice",
+                "type": "uint256"
             }
         ],
         "stateMutability": "view",
@@ -924,6 +1183,49 @@ export const CONTRACT_ABI = [
     {
         "inputs": [
             {
+                "internalType": "uint256",
+                "name": "tokenId",
+                "type": "uint256"
+            },
+            {
+                "internalType": "string",
+                "name": "title",
+                "type": "string"
+            },
+            {
+                "internalType": "string",
+                "name": "desc",
+                "type": "string"
+            },
+            {
+                "internalType": "uint256",
+                "name": "deadline",
+                "type": "uint256"
+            },
+            {
+                "internalType": "uint256",
+                "name": "target",
+                "type": "uint256"
+            },
+            {
+                "internalType": "uint256",
+                "name": "reward",
+                "type": "uint256"
+            },
+            {
+                "internalType": "uint256",
+                "name": "bonus",
+                "type": "uint256"
+            }
+        ],
+        "name": "setGoal",
+        "outputs": [],
+        "stateMutability": "nonpayable",
+        "type": "function"
+    },
+    {
+        "inputs": [
+            {
                 "internalType": "bytes4",
                 "name": "interfaceId",
                 "type": "bytes4"
@@ -1017,16 +1319,16 @@ export const CONTRACT_ABI = [
             },
             {
                 "internalType": "uint256",
-                "name": "points",
+                "name": "goalIndex",
                 "type": "uint256"
             },
             {
-                "internalType": "string",
-                "name": "reason",
-                "type": "string"
+                "internalType": "uint256",
+                "name": "value",
+                "type": "uint256"
             }
         ],
-        "name": "updateReputation",
+        "name": "updateGoalProgress",
         "outputs": [],
         "stateMutability": "nonpayable",
         "type": "function"
@@ -1062,54 +1364,212 @@ export const CONTRACT_ABI = [
         "outputs": [],
         "stateMutability": "nonpayable",
         "type": "function"
+    },
+    {
+        "inputs": [],
+        "name": "withdrawFees",
+        "outputs": [],
+        "stateMutability": "nonpayable",
+        "type": "function"
     }
-] as const
-
-export const CONTRACT_ADDRESS = process.env.NEXT_PUBLIC_CONTRACT_ADDRESS as `0x${string}` || "0x6f2CC3Fb16894A19aa1eA275158F7dd4d345a983"
-
-// Enhanced validation - Keep this for debugging
-if (!CONTRACT_ADDRESS) {
-    console.error('❌ NEXT_PUBLIC_CONTRACT_ADDRESS environment variable not set!')
-    if (!CONTRACT_ADDRESS) {
-        console.error('❌ NEXT_PUBLIC_CONTRACT_ADDRESS environment variable not set!')
-    } else {
-        console.log('✅ Contract address loaded:', CONTRACT_ADDRESS)
-    }
-} else {
-    console.log('✅ Contract address loaded:', CONTRACT_ADDRESS)
-}
-
-// Validate ABI structure - Keep this for debugging
-const createIdentityFunction = CONTRACT_ABI.find(
-    (item) => item.type === 'function' && item.name === 'createIdentity'
-)
-
-if (!createIdentityFunction) {
-    console.error('❌ createIdentity function not found in ABI')
-} else {
-    console.log('✅ createIdentity function found in ABI')
-    console.log('Function inputs:', createIdentityFunction.inputs)
-}
-
-// Log important functions for debugging (including new marketplace functions)
-const importantFunctions = [
-    'getIdentity',
-    'hasIdentity',
-    'getTokenIdByAddress',
-    'addAchievement',
-    'updateReputation',
-    'listIdentity',
-    'buyIdentity',
-    'cancelListing',
-    'getListingInfo',
-    'getListedIdentities'
 ]
 
-importantFunctions.forEach(funcName => {
-    const func = CONTRACT_ABI.find(item => item.type === 'function' && item.name === funcName)
-    if (func) {
-        console.log(`✅ ${funcName} function found in ABI`)
-    } else {
-        console.error(`❌ ${funcName} function not found in ABI`)
+export const CONTRACT_ADDRESS = '0xCf769a0f49507AFe6d7E4cADE715B9c4caa7158C' as `0x${string}`
+
+// Helper function to get all listed identities (since contract doesn't have this function)
+export const getListedIdentities = async (publicClient: any) => {
+    try {
+        // Get total identities count
+        const totalIdentities = await publicClient.readContract({
+            address: CONTRACT_ADDRESS,
+            abi: CONTRACT_ABI,
+            functionName: 'getTotalIdentities'
+        }) as bigint
+
+        const listedTokens: bigint[] = []
+        const listedPrices: bigint[] = []
+
+        // Check each token ID to see if it's listed
+        for (let i = 0; i < Number(totalIdentities); i++) {
+            try {
+                const listingInfo = await publicClient.readContract({
+                    address: CONTRACT_ADDRESS,
+                    abi: CONTRACT_ABI,
+                    functionName: 'getListingInfo',
+                    args: [BigInt(i)]
+                }) as [boolean, bigint]
+
+                if (listingInfo[0]) { // isListed = true
+                    listedTokens.push(BigInt(i))
+                    listedPrices.push(listingInfo[1])
+                }
+            } catch (error) {
+                // Token doesn't exist or other error, continue
+                continue
+            }
+        }
+
+        return [listedTokens, listedPrices] as [readonly bigint[], readonly bigint[]]
+    } catch (error) {
+        console.error('Error getting listed identities:', error)
+        return [[], []] as [readonly bigint[], readonly bigint[]]
     }
-})
+}
+
+// Helper function to check if user owns a token
+export const getUserTokenId = async (publicClient: any, userAddress: string) => {
+    try {
+        const tokenId = await publicClient.readContract({
+            address: CONTRACT_ADDRESS,
+            abi: CONTRACT_ABI,
+            functionName: 'getTokenIdByAddress',
+            args: [userAddress]
+        }) as bigint
+
+        return Number(tokenId)
+    } catch (error) {
+        console.error('Error getting user token ID:', error)
+        return 0
+    }
+}
+
+// Helper function to get user's owned NFTs for portfolio
+export const getUserOwnedNFTs = async (publicClient: any, userAddress: string) => {
+    try {
+        const hasIdentity = await publicClient.readContract({
+            address: CONTRACT_ADDRESS,
+            abi: CONTRACT_ABI,
+            functionName: 'hasIdentity',
+            args: [userAddress]
+        }) as boolean
+
+        if (!hasIdentity) {
+            return []
+        }
+
+        const tokenId = await getUserTokenId(publicClient, userAddress)
+        if (tokenId === 0) {
+            return []
+        }
+
+        // Get identity details
+        const identity = await publicClient.readContract({
+            address: CONTRACT_ADDRESS,
+            abi: CONTRACT_ABI,
+            functionName: 'getIdentity',
+            args: [BigInt(tokenId)]
+        }) as any
+
+        return [{
+            tokenId: tokenId.toString(),
+            reputationScore: Number(identity.reputationScore),
+            skillLevel: Number(identity.skillLevel),
+            achievementCount: Number(identity.achievementCount),
+            primarySkill: identity.primarySkill,
+            isVerified: identity.isVerified,
+            currentPrice: identity.currentPrice.toString(),
+            basePrice: identity.basePrice.toString(),
+            lastUpdate: Number(identity.lastUpdate)
+        }]
+    } catch (error) {
+        console.error('Error getting user owned NFTs:', error)
+        return []
+    }
+}
+
+// Helper to format price for display
+export const formatPrice = (priceWei: bigint): string => {
+    try {
+        return (Number(priceWei) / 1e18).toFixed(4)
+    } catch {
+        return '0.0000'
+    }
+}
+
+// Helper to validate if user can buy NFT
+export const canBuyNFT = async (publicClient: any, tokenId: number, userAddress: string): Promise<{ canBuy: boolean, reason?: string }> => {
+    try {
+        // Check if NFT exists
+        const owner = await publicClient.readContract({
+            address: CONTRACT_ADDRESS,
+            abi: CONTRACT_ABI,
+            functionName: 'ownerOf',
+            args: [BigInt(tokenId)]
+        }) as string
+
+        if (owner.toLowerCase() === userAddress.toLowerCase()) {
+            return { canBuy: false, reason: 'You already own this NFT' }
+        }
+
+        // Check if listed
+        const listingInfo = await publicClient.readContract({
+            address: CONTRACT_ADDRESS,
+            abi: CONTRACT_ABI,
+            functionName: 'getListingInfo',
+            args: [BigInt(tokenId)]
+        }) as [boolean, bigint]
+
+        if (!listingInfo[0]) {
+            return { canBuy: false, reason: 'NFT is not listed for sale' }
+        }
+
+        return { canBuy: true }
+    } catch (error) {
+        return { canBuy: false, reason: 'Error checking NFT status' }
+    }
+}
+
+// Types for better TypeScript support
+export interface ContractIdentity {
+    reputationScore: number
+    skillLevel: number
+    achievementCount: number
+    lastUpdate: number
+    primarySkill: string
+    isVerified: boolean
+    basePrice: string
+    currentPrice: string
+}
+
+export interface ContractAchievement {
+    title: string
+    description: string
+    timestamp: number
+    points: number
+    priceImpact: number
+}
+
+export interface ContractGoal {
+    title: string
+    description: string
+    deadline: number
+    targetValue: number
+    currentValue: number
+    completed: boolean
+    failed: boolean
+    rewardPoints: number
+    priceBonus: number
+}
+
+// Chain configuration for Somnia testnet with correct chain ID
+export const SOMNIA_TESTNET = {
+    id: 50312, // Your correct chain ID
+    name: 'Somnia Testnet',
+    network: 'somnia-testnet',
+    nativeCurrency: {
+        decimals: 18,
+        name: 'STT',
+        symbol: 'STT',
+    },
+    rpcUrls: {
+        public: { http: ['https://dream-rpc.somnia.network/'] },
+        default: { http: ['https://dream-rpc.somnia.network/'] },
+    },
+    blockExplorers: {
+        default: {
+            name: 'Somnia Explorer',
+            url: 'https://shannon-explorer.somnia.network'
+        },
+    },
+    testnet: true,
+} as const

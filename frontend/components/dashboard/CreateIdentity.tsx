@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react'
 import { useAccount, useWriteContract, useWaitForTransactionReceipt, useReadContract } from 'wagmi'
 import { motion, AnimatePresence } from 'framer-motion'
+import { parseEther } from 'viem'
 import {
     User, Code, Award, Target, ExternalLink, Plus, X, Calendar,
     Trophy, Star, Zap, CheckCircle
@@ -35,12 +36,15 @@ interface CreateIdentityProps {
 
 export function CreateIdentity({ onIdentityCreated, isCreating = false }: CreateIdentityProps) {
     const [currentStep, setCurrentStep] = useState(1)
+    const [createdTokenId, setCreatedTokenId] = useState<number | null>(null)
+    const [step, setStep] = useState(1) // 1: Create Identity, 2: Add Achievements
 
     // Basic Info
     const [username, setUsername] = useState('')
     const [primarySkill, setPrimarySkill] = useState('')
     const [experience, setExperience] = useState<'beginner' | 'intermediate' | 'advanced' | 'expert'>('beginner')
     const [bio, setBio] = useState('')
+    const [basePrice, setBasePrice] = useState('0.001') // Added base price
 
     // Skills
     const [skills, setSkills] = useState<string[]>([])
@@ -76,10 +80,20 @@ export function CreateIdentity({ onIdentityCreated, isCreating = false }: Create
     const [pendingIdentityData, setPendingIdentityData] = useState<any>(null)
 
     const { address, isConnected } = useAccount()
-    const { writeContract, data: hash, isPending } = useWriteContract()
+    const { writeContract, data: hash, isPending, reset } = useWriteContract()
     const { isLoading: isConfirming, isSuccess: isConfirmed } = useWaitForTransactionReceipt({
-        hash,
+        hash
     })
+    useEffect(() => {
+        if (isConfirmed && step === 1) {
+            toast.success('Identity created! Adding achievements...')
+            setStep(2)
+            setCreatedTokenId(0)
+            addInitialAchievements()
+        } else if (isConfirmed && step === 2) {
+            toast.success('Achievement added successfully!')
+        }
+    }, [isConfirmed, step])
 
     // Add these hooks for reading contract data
     const { data: hasExistingIdentity } = useReadContract({
@@ -101,13 +115,6 @@ export function CreateIdentity({ onIdentityCreated, isCreating = false }: Create
             enabled: !!username && !!CONTRACT_ADDRESS
         }
     })
-
-    // Watch for transaction confirmation to save to database
-    useEffect(() => {
-        if (isConfirmed && hash && pendingIdentityData) {
-            saveToDatabase(pendingIdentityData, hash)
-        }
-    }, [isConfirmed, hash, pendingIdentityData])
 
     const addSkill = () => {
         if (newSkill.trim() && !skills.includes(newSkill.trim())) {
@@ -136,16 +143,113 @@ export function CreateIdentity({ onIdentityCreated, isCreating = false }: Create
         }
     }
 
+    // FIXED: Calculate realistic price with achievements
     const calculatePrice = () => {
-        let price = 10 // Base price
-        price += achievements.length * 5 // +5 STT per achievement
-        price += goals.length * 2 // +2 STT per goal
-        price += skills.length * 1 // +1 STT per skill
+        let price = parseFloat(basePrice) // Start with base price
 
-        const multipliers = { beginner: 1, intermediate: 1.2, advanced: 1.5, expert: 2 }
+        // Add price impact from achievements
+        achievements.forEach(achievement => {
+            const impact = achievement.category === 'hackathon' ? 0.01 :
+                achievement.category === 'certification' ? 0.005 : 0.002
+            price += impact
+        })
+
+        // Add impact from goals
+        goals.forEach(goal => {
+            const impact = goal.priority === 'high' ? 0.003 :
+                goal.priority === 'medium' ? 0.002 : 0.001
+            price += impact
+        })
+
+        // Experience multiplier
+        const multipliers = { beginner: 1, intermediate: 1.1, advanced: 1.2, expert: 1.3 }
         price *= multipliers[experience]
 
-        return Math.round(price * 100) / 100
+        return price.toFixed(4)
+    }
+
+    // FIXED: Add achievements after identity creation
+    const addInitialAchievements = async () => {
+        if (!createdTokenId || achievements.length === 0) {
+            completeIdentityCreation()
+            return
+        }
+
+        try {
+            const validAchievements = achievements.filter(a => a.title && a.description)
+
+            for (const achievement of validAchievements) {
+                const points = achievement.category === 'hackathon' ? 50 :
+                    achievement.category === 'certification' ? 30 : 20
+                const priceImpact = achievement.category === 'hackathon' ? 100 : 50 // basis points
+
+                await writeContract({
+                    address: CONTRACT_ADDRESS,
+                    abi: CONTRACT_ABI,
+                    functionName: 'addAchievement',
+                    args: [
+                        BigInt(createdTokenId),
+                        achievement.title,
+                        achievement.description,
+                        BigInt(points),
+                        BigInt(priceImpact)
+                    ]
+                })
+
+                // Wait between transactions
+                await new Promise(resolve => setTimeout(resolve, 2000))
+            }
+
+            completeIdentityCreation()
+
+        } catch (error) {
+            console.error('Failed to add achievements:', error)
+            toast.error('Identity created but achievements failed')
+            completeIdentityCreation()
+        }
+    }
+
+    const completeIdentityCreation = async () => {
+        try {
+            const identityData = {
+                username,
+                primarySkill,
+                basePrice,
+                achievements: achievements.length,
+                goals: goals.length,
+                skills: skills.length,
+                estimatedPrice: calculatePrice()
+            }
+
+            toast.success('Enhanced SomniaID created successfully!')
+            onIdentityCreated(identityData)
+
+            // Trigger portfolio refresh
+            window.dispatchEvent(new CustomEvent('portfolioRefresh'))
+
+            // Reset form
+            resetForm()
+
+        } catch (error) {
+            console.error('Failed to complete identity creation:', error)
+        }
+    }
+
+    const resetForm = () => {
+        setUsername('')
+        setPrimarySkill('')
+        setBasePrice('0.001')
+        setBio('')
+        setSkills([])
+        setAchievements([])
+        setGoals([])
+        setSocialLinks({ twitter: '', github: '', linkedin: '', website: '' })
+        setCurrentStep(1)
+        setStep(1)
+        setCreatedTokenId(null)
+        setLoading(false)
+        setPendingIdentityData(null)
+        reset()
     }
 
     const saveToDatabase = async (identityData: any, txHash: string) => {
@@ -203,7 +307,7 @@ export function CreateIdentity({ onIdentityCreated, isCreating = false }: Create
         }
     }
 
-    // Update your handleSubmit function
+    // FIXED: Update handleSubmit to use basePrice
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault()
 
@@ -231,13 +335,13 @@ export function CreateIdentity({ onIdentityCreated, isCreating = false }: Create
         try {
             setLoading(true)
 
-            const tokenId = Math.floor(Date.now() / 1000)
+            const priceInWei = parseEther(basePrice)
             const estimatedPrice = calculatePrice()
 
             const identityData = {
-                tokenId,
                 username,
                 primarySkill,
+                basePrice,
                 experience,
                 ownerAddress: address,
                 reputationScore: 100 + achievements.length * 10,
@@ -268,18 +372,19 @@ export function CreateIdentity({ onIdentityCreated, isCreating = false }: Create
 
             setPendingIdentityData(identityData)
 
-            toast.loading('Please confirm the transaction in your wallet...')
+            toast.loading('Please confirm the transaction in your wallet...', { id: 'creating' })
 
-            writeContract({
+            // FIXED: Use createIdentity with basePrice
+            await writeContract({
                 address: CONTRACT_ADDRESS,
                 abi: CONTRACT_ABI,
                 functionName: 'createIdentity',
-                args: [username.trim(), primarySkill.trim()],
+                args: [username.trim(), primarySkill.trim(), priceInWei],
             })
 
         } catch (error: any) {
             console.error('Error in handleSubmit:', error)
-            toast.dismiss()
+            toast.dismiss('creating')
 
             if (error.message?.includes('Proposal expired')) {
                 toast.error('Wallet connection expired. Please reconnect and try again.')
@@ -342,6 +447,7 @@ export function CreateIdentity({ onIdentityCreated, isCreating = false }: Create
                                         placeholder="Your unique username"
                                         className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                                         required
+                                        disabled={loading || isPending || isConfirming}
                                     />
                                 </div>
 
@@ -354,6 +460,7 @@ export function CreateIdentity({ onIdentityCreated, isCreating = false }: Create
                                         onChange={(e) => setPrimarySkill(e.target.value)}
                                         className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                                         required
+                                        disabled={loading || isPending || isConfirming}
                                     >
                                         <option value="">Select primary skill</option>
                                         <option value="Smart Contract Development">Smart Contract Development</option>
@@ -367,6 +474,26 @@ export function CreateIdentity({ onIdentityCreated, isCreating = false }: Create
                                 </div>
                             </div>
 
+                            {/* ADDED: Base Price Field */}
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-2">
+                                    Starting Price (STT) *
+                                </label>
+                                <input
+                                    type="number"
+                                    step="0.001"
+                                    min="0.001"
+                                    value={basePrice}
+                                    onChange={(e) => setBasePrice(e.target.value)}
+                                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                    placeholder="0.001"
+                                    disabled={loading || isPending || isConfirming}
+                                />
+                                <p className="text-xs text-gray-500 mt-1">
+                                    Base price for your NFT. Final price will include achievement bonuses.
+                                </p>
+                            </div>
+
                             <div>
                                 <label className="block text-sm font-medium text-gray-700 mb-2">
                                     Experience Level *
@@ -377,6 +504,7 @@ export function CreateIdentity({ onIdentityCreated, isCreating = false }: Create
                                             key={level}
                                             type="button"
                                             onClick={() => setExperience(level)}
+                                            disabled={loading || isPending || isConfirming}
                                             className={`p-3 rounded-lg border-2 text-sm font-medium capitalize ${experience === level
                                                 ? 'border-blue-500 bg-blue-50 text-blue-700'
                                                 : 'border-gray-200 hover:border-gray-300'
@@ -397,6 +525,7 @@ export function CreateIdentity({ onIdentityCreated, isCreating = false }: Create
                                     onChange={(e) => setBio(e.target.value)}
                                     placeholder="Tell us about yourself..."
                                     className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent h-24"
+                                    disabled={loading || isPending || isConfirming}
                                 />
                             </div>
                         </motion.div>
@@ -429,11 +558,13 @@ export function CreateIdentity({ onIdentityCreated, isCreating = false }: Create
                                         placeholder="Enter a skill"
                                         className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
                                         onKeyPress={(e) => e.key === 'Enter' && (e.preventDefault(), addSkill())}
+                                        disabled={loading || isPending || isConfirming}
                                     />
                                     <button
                                         type="button"
                                         onClick={addSkill}
                                         className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+                                        disabled={loading || isPending || isConfirming}
                                     >
                                         <Plus className="w-4 h-4" />
                                     </button>
@@ -454,6 +585,7 @@ export function CreateIdentity({ onIdentityCreated, isCreating = false }: Create
                                                     type="button"
                                                     onClick={() => setSkills(skills.filter((_, i) => i !== index))}
                                                     className="text-blue-600 hover:text-blue-800"
+                                                    disabled={loading || isPending || isConfirming}
                                                 >
                                                     <X className="w-3 h-3" />
                                                 </button>
@@ -489,11 +621,13 @@ export function CreateIdentity({ onIdentityCreated, isCreating = false }: Create
                                         onChange={(e) => setNewAchievement({ ...newAchievement, title: e.target.value })}
                                         placeholder="Achievement title"
                                         className="px-3 py-2 border border-gray-300 rounded-lg"
+                                        disabled={loading || isPending || isConfirming}
                                     />
                                     <select
                                         value={newAchievement.category}
                                         onChange={(e) => setNewAchievement({ ...newAchievement, category: e.target.value as any })}
                                         className="px-3 py-2 border border-gray-300 rounded-lg"
+                                        disabled={loading || isPending || isConfirming}
                                     >
                                         <option value="project">Project</option>
                                         <option value="hackathon">Hackathon</option>
@@ -509,6 +643,7 @@ export function CreateIdentity({ onIdentityCreated, isCreating = false }: Create
                                         value={newAchievement.dateAchieved}
                                         onChange={(e) => setNewAchievement({ ...newAchievement, dateAchieved: e.target.value })}
                                         className="px-3 py-2 border border-gray-300 rounded-lg"
+                                        disabled={loading || isPending || isConfirming}
                                     />
                                     <input
                                         type="url"
@@ -516,6 +651,7 @@ export function CreateIdentity({ onIdentityCreated, isCreating = false }: Create
                                         onChange={(e) => setNewAchievement({ ...newAchievement, proof: e.target.value })}
                                         placeholder="Proof URL (optional)"
                                         className="px-3 py-2 border border-gray-300 rounded-lg"
+                                        disabled={loading || isPending || isConfirming}
                                     />
                                 </div>
                                 <textarea
@@ -523,11 +659,13 @@ export function CreateIdentity({ onIdentityCreated, isCreating = false }: Create
                                     onChange={(e) => setNewAchievement({ ...newAchievement, description: e.target.value })}
                                     placeholder="Describe your achievement..."
                                     className="w-full px-3 py-2 border border-gray-300 rounded-lg h-20 mb-4"
+                                    disabled={loading || isPending || isConfirming}
                                 />
                                 <button
                                     type="button"
                                     onClick={addAchievement}
                                     className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700"
+                                    disabled={loading || isPending || isConfirming}
                                 >
                                     Add Achievement
                                 </button>
@@ -554,6 +692,7 @@ export function CreateIdentity({ onIdentityCreated, isCreating = false }: Create
                                                         type="button"
                                                         onClick={() => setAchievements(achievements.filter((_, i) => i !== index))}
                                                         className="text-red-500 hover:text-red-700"
+                                                        disabled={loading || isPending || isConfirming}
                                                     >
                                                         <X className="w-4 h-4" />
                                                     </button>
@@ -590,13 +729,14 @@ export function CreateIdentity({ onIdentityCreated, isCreating = false }: Create
                                         onChange={(e) => setNewGoal({ ...newGoal, title: e.target.value })}
                                         placeholder="Goal title"
                                         className="px-3 py-2 border border-gray-300 rounded-lg"
+                                        disabled={loading || isPending || isConfirming}
                                     />
                                     <input
                                         type="text"
-                                        value={newGoal.category}
                                         onChange={(e) => setNewGoal({ ...newGoal, category: e.target.value })}
                                         placeholder="Category (e.g., Career, Learning)"
                                         className="px-3 py-2 border border-gray-300 rounded-lg"
+                                        disabled={loading || isPending || isConfirming}
                                     />
                                 </div>
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
@@ -605,11 +745,13 @@ export function CreateIdentity({ onIdentityCreated, isCreating = false }: Create
                                         value={newGoal.targetDate}
                                         onChange={(e) => setNewGoal({ ...newGoal, targetDate: e.target.value })}
                                         className="px-3 py-2 border border-gray-300 rounded-lg"
+                                        disabled={loading || isPending || isConfirming}
                                     />
                                     <select
                                         value={newGoal.priority}
                                         onChange={(e) => setNewGoal({ ...newGoal, priority: e.target.value as any })}
                                         className="px-3 py-2 border border-gray-300 rounded-lg"
+                                        disabled={loading || isPending || isConfirming}
                                     >
                                         <option value="high">High Priority</option>
                                         <option value="medium">Medium Priority</option>
@@ -621,11 +763,13 @@ export function CreateIdentity({ onIdentityCreated, isCreating = false }: Create
                                     onChange={(e) => setNewGoal({ ...newGoal, description: e.target.value })}
                                     placeholder="Describe your goal and how you plan to achieve it..."
                                     className="w-full px-3 py-2 border border-gray-300 rounded-lg h-20 mb-4"
+                                    disabled={loading || isPending || isConfirming}
                                 />
                                 <button
                                     type="button"
                                     onClick={addGoal}
                                     className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700"
+                                    disabled={loading || isPending || isConfirming}
                                 >
                                     Add Goal
                                 </button>
@@ -658,6 +802,7 @@ export function CreateIdentity({ onIdentityCreated, isCreating = false }: Create
                                                         type="button"
                                                         onClick={() => setGoals(goals.filter((_, i) => i !== index))}
                                                         className="text-red-500 hover:text-red-700"
+                                                        disabled={loading || isPending || isConfirming}
                                                     >
                                                         <X className="w-4 h-4" />
                                                     </button>
@@ -685,12 +830,13 @@ export function CreateIdentity({ onIdentityCreated, isCreating = false }: Create
                                 <p className="text-gray-600">Review your profile before creating</p>
                             </div>
 
+                            {/* UPDATED: Price calculation display */}
                             <div className="bg-gradient-to-r from-blue-50 to-purple-50 p-6 rounded-lg border">
                                 <div className="text-center">
-                                    <h3 className="text-lg font-semibold text-gray-900 mb-2">Estimated NFT Value</h3>
+                                    <h3 className="text-lg font-semibold text-gray-900 mb-2">Estimated NFT Price</h3>
                                     <div className="text-3xl font-bold text-blue-600">{calculatePrice()} STT</div>
                                     <p className="text-sm text-gray-600 mt-2">
-                                        Based on {achievements.length} achievements, {goals.length} goals, and {skills.length} skills
+                                        Base: {basePrice} STT + {achievements.length} achievements + {goals.length} goals + {experience} multiplier
                                     </p>
                                 </div>
                             </div>
@@ -728,6 +874,7 @@ export function CreateIdentity({ onIdentityCreated, isCreating = false }: Create
                                         onChange={(e) => setSocialLinks({ ...socialLinks, github: e.target.value })}
                                         placeholder="GitHub URL"
                                         className="px-3 py-2 border border-gray-300 rounded-lg"
+                                        disabled={loading || isPending || isConfirming}
                                     />
                                     <input
                                         type="url"
@@ -735,6 +882,7 @@ export function CreateIdentity({ onIdentityCreated, isCreating = false }: Create
                                         onChange={(e) => setSocialLinks({ ...socialLinks, twitter: e.target.value })}
                                         placeholder="Twitter URL"
                                         className="px-3 py-2 border border-gray-300 rounded-lg"
+                                        disabled={loading || isPending || isConfirming}
                                     />
                                     <input
                                         type="url"
@@ -742,6 +890,7 @@ export function CreateIdentity({ onIdentityCreated, isCreating = false }: Create
                                         onChange={(e) => setSocialLinks({ ...socialLinks, linkedin: e.target.value })}
                                         placeholder="LinkedIn URL"
                                         className="px-3 py-2 border border-gray-300 rounded-lg"
+                                        disabled={loading || isPending || isConfirming}
                                     />
                                     <input
                                         type="url"
@@ -749,60 +898,10 @@ export function CreateIdentity({ onIdentityCreated, isCreating = false }: Create
                                         onChange={(e) => setSocialLinks({ ...socialLinks, website: e.target.value })}
                                         placeholder="Website URL"
                                         className="px-3 py-2 border border-gray-300 rounded-lg"
+                                        disabled={loading || isPending || isConfirming}
                                     />
                                 </div>
                             </div>
-
-                            {/* Debug Test Button */}
-                            <button
-                                type="button"
-                                onClick={() => {
-                                    console.log('=== FRONTEND DATA COLLECTION TEST ===')
-                                    console.log('1. Username:', username)
-                                    console.log('2. Primary Skill:', primarySkill)
-                                    console.log('3. Experience:', experience)
-                                    console.log('4. Bio:', bio)
-                                    console.log('5. Skills:', skills)
-                                    console.log('6. Achievements:', achievements)
-                                    console.log('7. Goals:', goals)
-                                    console.log('8. Social Links:', socialLinks)
-
-                                    const testData = {
-                                        username,
-                                        primarySkill,
-                                        experience,
-                                        ownerAddress: address,
-                                        profile: {
-                                            bio,
-                                            skills,
-                                            achievements: achievements.map((a, index) => ({
-                                                id: `ach_${Date.now()}_${index}`,
-                                                ...a,
-                                                points: a.category === 'hackathon' ? 50 : a.category === 'certification' ? 30 : 20,
-                                                valueImpact: a.category === 'hackathon' ? 15 : 10,
-                                                dateAchieved: new Date(a.dateAchieved)
-                                            })),
-                                            goals: goals.map((g, index) => ({
-                                                id: `goal_${Date.now()}_${index}`,
-                                                ...g,
-                                                targetDate: new Date(g.targetDate),
-                                                progress: 0,
-                                                valueImpact: g.priority === 'high' ? 10 : g.priority === 'medium' ? 5 : 2
-                                            })),
-                                            socialLinks
-                                        }
-                                    }
-
-                                    console.log('9. Structured data that will be sent:', testData)
-                                    console.log('10. JSON string length:', JSON.stringify(testData).length)
-                                    console.log('=== END TEST ===')
-
-                                    toast.success(`Data collected: ${achievements.length} achievements, ${goals.length} goals, ${skills.length} skills`)
-                                }}
-                                className="w-full px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 mb-4"
-                            >
-                                🔍 Test Data Collection
-                            </button>
                         </motion.div>
                     )}
                 </AnimatePresence>
@@ -813,6 +912,7 @@ export function CreateIdentity({ onIdentityCreated, isCreating = false }: Create
                         type="button"
                         onClick={prevStep}
                         className={`px-6 py-2 border border-gray-300 rounded-lg ${currentStep === 1 ? 'invisible' : ''}`}
+                        disabled={loading || isPending || isConfirming}
                     >
                         Previous
                     </button>
@@ -821,7 +921,7 @@ export function CreateIdentity({ onIdentityCreated, isCreating = false }: Create
                         <button
                             type="button"
                             onClick={nextStep}
-                            disabled={currentStep === 1 && (!username || !primarySkill)}
+                            disabled={currentStep === 1 && (!username || !primarySkill) || loading || isPending || isConfirming}
                             className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
                         >
                             Next
