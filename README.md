@@ -1,6 +1,6 @@
 # SomniaID - Real-Time Reputation NFTs
 
-**🏆 Somnia DeFi Mini Hackathon Submission**
+
 
 > The first real-time reputation NFT platform built on Somnia Network - where your digital identity evolves instantly with every achievement, powered by sub-second finality and 1M+ TPS.
 
@@ -444,5 +444,6 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 ---
 
 **Built with ❤️ for the Somnia DeFi Mini Hackathon**
+
 
 *Turning concepts into fully on-chain dApps that leverage Somnia's 1M+ TPS and sub-second finality*
