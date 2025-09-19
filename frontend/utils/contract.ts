@@ -1,3 +1,6 @@
+export const CONTRACT_ADDRESS = '0xCf769a0f49507AFe6d7E4cADE715B9c4caa7158C' as `0x${string}`
+
+
 export const CONTRACT_ABI = [
     {
         "inputs": [],
@@ -1374,202 +1377,190 @@ export const CONTRACT_ABI = [
     }
 ]
 
-export const CONTRACT_ADDRESS = '0xCf769a0f49507AFe6d7E4cADE715B9c4caa7158C' as `0x${string}`
-
-// Helper function to get all listed identities (since contract doesn't have this function)
 export const getListedIdentities = async (publicClient: any) => {
     try {
-        // Get total identities count
+        console.log('🔍 Getting listed identities from contract...');
+
         const totalIdentities = await publicClient.readContract({
             address: CONTRACT_ADDRESS,
             abi: CONTRACT_ABI,
             functionName: 'getTotalIdentities'
-        }) as bigint
+        }) as bigint;
 
-        const listedTokens: bigint[] = []
-        const listedPrices: bigint[] = []
+        console.log(`Total identities: ${totalIdentities}`);
+
+        const listedTokens: bigint[] = [];
+        const listedPrices: bigint[] = [];
 
         // Check each token ID to see if it's listed
         for (let i = 0; i < Number(totalIdentities); i++) {
             try {
-                const listingInfo = await publicClient.readContract({
+                // First check if token exists
+                const owner = await publicClient.readContract({
                     address: CONTRACT_ADDRESS,
                     abi: CONTRACT_ABI,
-                    functionName: 'getListingInfo',
+                    functionName: 'ownerOf',
                     args: [BigInt(i)]
-                }) as [boolean, bigint]
+                }) as string;
 
-                if (listingInfo[0]) { // isListed = true
-                    listedTokens.push(BigInt(i))
-                    listedPrices.push(listingInfo[1])
+                if (owner && owner !== '0x0000000000000000000000000000000000000000') {
+                    // Token exists, check if listed
+                    const listingInfo = await publicClient.readContract({
+                        address: CONTRACT_ADDRESS,
+                        abi: CONTRACT_ABI,
+                        functionName: 'getListingInfo',
+                        args: [BigInt(i)]
+                    }) as [boolean, bigint];
+
+                    if (listingInfo[0] && listingInfo[1] > 0) { // isListed and price > 0
+                        console.log(`✅ Token ${i} listed for ${listingInfo[1]} wei`);
+                        listedTokens.push(BigInt(i));
+                        listedPrices.push(listingInfo[1]);
+                    }
                 }
             } catch (error) {
-                // Token doesn't exist or other error, continue
-                continue
+                // Token doesn't exist or error, continue
+                continue;
             }
         }
 
-        return [listedTokens, listedPrices] as [readonly bigint[], readonly bigint[]]
+        console.log(`Found ${listedTokens.length} listed tokens`);
+        return [listedTokens, listedPrices] as [readonly bigint[], readonly bigint[]];
+
     } catch (error) {
-        console.error('Error getting listed identities:', error)
-        return [[], []] as [readonly bigint[], readonly bigint[]]
+        console.error('Error getting listed identities:', error);
+        return [[], []] as [readonly bigint[], readonly bigint[]];
     }
 }
 
-// Helper function to check if user owns a token
+// FIXED: Helper function to check if user owns a token (remove duplicates)
 export const getUserTokenId = async (publicClient: any, userAddress: string) => {
-    try {
-        const tokenId = await publicClient.readContract({
-            address: CONTRACT_ADDRESS,
-            abi: CONTRACT_ABI,
-            functionName: 'getTokenIdByAddress',
-            args: [userAddress]
-        }) as bigint
-
-        return Number(tokenId)
-    } catch (error) {
-        console.error('Error getting user token ID:', error)
-        return 0
-    }
-}
-
-// Helper function to get user's owned NFTs for portfolio
-export const getUserOwnedNFTs = async (publicClient: any, userAddress: string) => {
     try {
         const hasIdentity = await publicClient.readContract({
             address: CONTRACT_ADDRESS,
             abi: CONTRACT_ABI,
             functionName: 'hasIdentity',
             args: [userAddress]
-        }) as boolean
+        }) as boolean;
 
         if (!hasIdentity) {
-            return []
+            return 0;
         }
 
-        const tokenId = await getUserTokenId(publicClient, userAddress)
-        if (tokenId === 0) {
-            return []
-        }
-
-        // Get identity details
-        const identity = await publicClient.readContract({
+        const tokenId = await publicClient.readContract({
             address: CONTRACT_ADDRESS,
             abi: CONTRACT_ABI,
-            functionName: 'getIdentity',
-            args: [BigInt(tokenId)]
-        }) as any
+            functionName: 'getTokenIdByAddress',
+            args: [userAddress]
+        }) as bigint;
 
-        return [{
-            tokenId: tokenId.toString(),
-            reputationScore: Number(identity.reputationScore),
-            skillLevel: Number(identity.skillLevel),
-            achievementCount: Number(identity.achievementCount),
-            primarySkill: identity.primarySkill,
-            isVerified: identity.isVerified,
-            currentPrice: identity.currentPrice.toString(),
-            basePrice: identity.basePrice.toString(),
-            lastUpdate: Number(identity.lastUpdate)
-        }]
+        return Number(tokenId);
     } catch (error) {
-        console.error('Error getting user owned NFTs:', error)
-        return []
+        console.error('Error getting user token ID:', error);
+        return 0;
+    }
+}
+
+// ADDED: Missing estimateBuyGas function
+export const estimateBuyGas = async (publicClient: any, tokenId: number, userAddress: string, price: bigint): Promise<bigint> => {
+    try {
+        console.log(`💨 Estimating gas for buying NFT #${tokenId}`);
+
+        const gasEstimate = await publicClient.estimateContractGas({
+            address: CONTRACT_ADDRESS,
+            abi: CONTRACT_ABI,
+            functionName: 'buyIdentity',
+            args: [BigInt(tokenId)],
+            value: price,
+            account: userAddress as `0x${string}`
+        });
+
+        // Add 20% buffer for gas
+        const gasWithBuffer = gasEstimate + (gasEstimate * BigInt(20)) / BigInt(100);
+        console.log(`💨 Estimated gas: ${gasEstimate}, with buffer: ${gasWithBuffer}`);
+
+        return gasWithBuffer;
+
+    } catch (error) {
+        console.warn('Gas estimation failed, using fallback:', error);
+        // Return a reasonable default gas limit for NFT purchases
+        return BigInt(300000);
+    }
+}
+
+// FIXED: Helper to validate if user can buy NFT
+export const canBuyNFT = async (publicClient: any, tokenId: number, userAddress: string): Promise<{ canBuy: boolean, reason?: string }> => {
+    try {
+        console.log(`🔍 Checking if user ${userAddress} can buy NFT #${tokenId}`);
+
+        // Check if NFT exists by trying to get owner
+        let owner: string;
+        try {
+            owner = await publicClient.readContract({
+                address: CONTRACT_ADDRESS,
+                abi: CONTRACT_ABI,
+                functionName: 'ownerOf',
+                args: [BigInt(tokenId)]
+            }) as string;
+        } catch (ownerError) {
+            console.error('NFT does not exist:', ownerError);
+            return { canBuy: false, reason: 'NFT does not exist' };
+        }
+
+        // Check if user already owns it
+        if (owner.toLowerCase() === userAddress.toLowerCase()) {
+            return { canBuy: false, reason: 'You already own this NFT' };
+        }
+
+        // Check if NFT is listed for sale
+        let listingInfo: [boolean, bigint];
+        try {
+            listingInfo = await publicClient.readContract({
+                address: CONTRACT_ADDRESS,
+                abi: CONTRACT_ABI,
+                functionName: 'getListingInfo',
+                args: [BigInt(tokenId)]
+            }) as [boolean, bigint];
+        } catch (listingError) {
+            console.error('Error checking listing info:', listingError);
+            return { canBuy: false, reason: 'Error checking listing status' };
+        }
+
+        const [isListed, price] = listingInfo;
+
+        if (!isListed) {
+            return { canBuy: false, reason: 'NFT is not listed for sale' };
+        }
+
+        if (price <= 0) {
+            return { canBuy: false, reason: 'Invalid listing price' };
+        }
+
+        // Check user's balance
+        try {
+            const balance = await publicClient.getBalance({ address: userAddress as `0x${string}` });
+            if (balance < price) {
+                return { canBuy: false, reason: `Insufficient balance. Need ${(Number(price) / 1e18).toFixed(4)} ETH` };
+            }
+        } catch (balanceError) {
+            console.warn('Could not check balance:', balanceError);
+            // Continue anyway, let the transaction fail if insufficient funds
+        }
+
+        console.log(`✅ User can buy NFT #${tokenId} for ${Number(price) / 1e18} ETH`);
+        return { canBuy: true };
+
+    } catch (error) {
+        console.error('Error in canBuyNFT:', error);
+        return { canBuy: false, reason: 'Error validating purchase' };
     }
 }
 
 // Helper to format price for display
 export const formatPrice = (priceWei: bigint): string => {
     try {
-        return (Number(priceWei) / 1e18).toFixed(4)
+        return (Number(priceWei) / 1e18).toFixed(4);
     } catch {
-        return '0.0000'
+        return '0.0000';
     }
 }
-
-// Helper to validate if user can buy NFT
-export const canBuyNFT = async (publicClient: any, tokenId: number, userAddress: string): Promise<{ canBuy: boolean, reason?: string }> => {
-    try {
-        // Check if NFT exists
-        const owner = await publicClient.readContract({
-            address: CONTRACT_ADDRESS,
-            abi: CONTRACT_ABI,
-            functionName: 'ownerOf',
-            args: [BigInt(tokenId)]
-        }) as string
-
-        if (owner.toLowerCase() === userAddress.toLowerCase()) {
-            return { canBuy: false, reason: 'You already own this NFT' }
-        }
-
-        // Check if listed
-        const listingInfo = await publicClient.readContract({
-            address: CONTRACT_ADDRESS,
-            abi: CONTRACT_ABI,
-            functionName: 'getListingInfo',
-            args: [BigInt(tokenId)]
-        }) as [boolean, bigint]
-
-        if (!listingInfo[0]) {
-            return { canBuy: false, reason: 'NFT is not listed for sale' }
-        }
-
-        return { canBuy: true }
-    } catch (error) {
-        return { canBuy: false, reason: 'Error checking NFT status' }
-    }
-}
-
-// Types for better TypeScript support
-export interface ContractIdentity {
-    reputationScore: number
-    skillLevel: number
-    achievementCount: number
-    lastUpdate: number
-    primarySkill: string
-    isVerified: boolean
-    basePrice: string
-    currentPrice: string
-}
-
-export interface ContractAchievement {
-    title: string
-    description: string
-    timestamp: number
-    points: number
-    priceImpact: number
-}
-
-export interface ContractGoal {
-    title: string
-    description: string
-    deadline: number
-    targetValue: number
-    currentValue: number
-    completed: boolean
-    failed: boolean
-    rewardPoints: number
-    priceBonus: number
-}
-
-// Chain configuration for Somnia testnet with correct chain ID
-export const SOMNIA_TESTNET = {
-    id: 50312, // Your correct chain ID
-    name: 'Somnia Testnet',
-    network: 'somnia-testnet',
-    nativeCurrency: {
-        decimals: 18,
-        name: 'STT',
-        symbol: 'STT',
-    },
-    rpcUrls: {
-        public: { http: ['https://dream-rpc.somnia.network/'] },
-        default: { http: ['https://dream-rpc.somnia.network/'] },
-    },
-    blockExplorers: {
-        default: {
-            name: 'Somnia Explorer',
-            url: 'https://shannon-explorer.somnia.network'
-        },
-    },
-    testnet: true,
-} as const

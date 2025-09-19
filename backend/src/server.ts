@@ -13,6 +13,8 @@ import identityRoutes from './routes/identity';
 import achievementRoutes from './routes/achievements';
 import portfolioRoutes from './routes/portfolio';
 import goalsRoutes from './routes/goals';
+import marketplaceRoutes from './routes/marketplace';
+import nftRoutes from './routes/nft'
 
 // Import all services
 import RealtimeService from './services/realtimeService';
@@ -89,6 +91,8 @@ app.use(limiter);
 
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
+app.use('/api/marketplace', marketplaceRoutes);
+app.use('/api/nft', nftRoutes);
 
 app.use((req, res, next) => {
     const timestamp = new Date().toISOString();

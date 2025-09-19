@@ -194,6 +194,37 @@ export const useNFTEventSync = (callbacks: SyncCallbacks) => {
         }
     })
 
+    // Watch for IdentityListed events - NEW EVENT LISTENER
+    useWatchContractEvent({
+        address: CONTRACT_ADDRESS,
+        abi: CONTRACT_ABI,
+        eventName: 'IdentityListed',
+        onLogs(logs) {
+            logs.forEach((log: any) => {
+                const { tokenId, price } = log.args
+
+                if (Number(price) === 0) {
+                    // This is an unlisting event (price set to 0)
+                    console.log('❌ IdentityUnlisted blockchain event:', { tokenId: Number(tokenId) })
+                    setTimeout(() => {
+                        window.dispatchEvent(new CustomEvent('marketplaceRefresh'))
+                    }, 2000)
+                } else {
+                    // This is a listing event
+                    console.log('🏷️ IdentityListed blockchain event:', {
+                        tokenId: Number(tokenId),
+                        price: Number(price) / 1e18
+                    })
+                    // Emit refresh events with delay
+                    setTimeout(() => {
+                        window.dispatchEvent(new CustomEvent('marketplaceRefresh'))
+                        window.dispatchEvent(new CustomEvent('identityListed'))
+                    }, 2000) // 2 second delay for blockchain finality
+                }
+            })
+        }
+    })
+
     // Log sync status
     useEffect(() => {
         if (address && CONTRACT_ADDRESS) {

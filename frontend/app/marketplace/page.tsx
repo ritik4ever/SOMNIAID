@@ -6,9 +6,11 @@ import { Search, Filter, TrendingUp, Star, ShoppingCart, Eye, ExternalLink, Trop
 import { useAccount, useWriteContract, useWaitForTransactionReceipt, useReadContract, usePublicClient } from 'wagmi'
 import { formatEther, parseEther } from 'viem'
 import Link from 'next/link'
-import { api } from '@/utils/api'
-import { CONTRACT_ABI, CONTRACT_ADDRESS, getListedIdentities } from '@/utils/contract'
+import { marketplaceAPI, nftAPI, api } from '@/utils/api'
+import { CONTRACT_ABI, CONTRACT_ADDRESS, getListedIdentities, canBuyNFT, estimateBuyGas } from '@/utils/contract'
+import { useNFTEventSync } from '@/hooks/useNFTEventSync'
 import toast from 'react-hot-toast'
+import { API_BASE_URL } from '@/utils/api'
 
 interface MarketplaceItem {
     tokenId: number
@@ -36,6 +38,8 @@ export default function MarketplacePage() {
     const [sortBy, setSortBy] = useState('price_asc')
     const [filter, setFilter] = useState('all')
     const [buyingTokenId, setBuyingTokenId] = useState<number | null>(null)
+    const [lastRefresh, setLastRefresh] = useState(Date.now())
+    const [debugMode, setDebugMode] = useState(false)
 
     const { address, isConnected } = useAccount()
     const { writeContract, data: hash, isPending } = useWriteContract()
@@ -43,26 +47,100 @@ export default function MarketplacePage() {
         hash,
     })
 
-    // Add publicClient hook
     const publicClient = usePublicClient()
 
+    // Initial load
     useEffect(() => {
         loadMarketplaceItems()
     }, [publicClient])
 
+    // Filter and sort items
     useEffect(() => {
         filterAndSortItems()
     }, [items, searchQuery, sortBy, filter])
 
-    // ADDED: Listen for marketplace refresh events
+    // Comprehensive refresh system
     useEffect(() => {
-        const handleMarketplaceRefresh = () => {
-            console.log('Marketplace refresh event received')
-            loadMarketplaceItems()
+        let refreshTimeout: NodeJS.Timeout
+
+        const handleRefresh = (eventType: string) => {
+            console.log(`🔄 Marketplace refresh triggered: ${eventType}`)
+
+            if (refreshTimeout) clearTimeout(refreshTimeout)
+
+            refreshTimeout = setTimeout(() => {
+                setLastRefresh(Date.now())
+                loadMarketplaceItems()
+            }, 3000)
         }
 
+        const handleMarketplaceRefresh = () => handleRefresh('marketplace_refresh')
+        const handleIdentityListed = () => handleRefresh('identity_listed')
+        const handleIdentityPurchased = () => handleRefresh('identity_purchased')
+        const handlePortfolioRefresh = () => handleRefresh('portfolio_refresh')
+
         window.addEventListener('marketplaceRefresh', handleMarketplaceRefresh)
-        return () => window.removeEventListener('marketplaceRefresh', handleMarketplaceRefresh)
+        window.addEventListener('identityListed', handleIdentityListed)
+        window.addEventListener('identityPurchased', handleIdentityPurchased)
+        window.addEventListener('portfolioRefresh', handlePortfolioRefresh)
+        window.addEventListener('nft_listed', handleMarketplaceRefresh)
+
+        return () => {
+            if (refreshTimeout) clearTimeout(refreshTimeout)
+            window.removeEventListener('marketplaceRefresh', handleMarketplaceRefresh)
+            window.removeEventListener('identityListed', handleIdentityListed)
+            window.removeEventListener('identityPurchased', handleIdentityPurchased)
+            window.removeEventListener('portfolioRefresh', handlePortfolioRefresh)
+            window.removeEventListener('nft_listed', handleMarketplaceRefresh)
+        }
+    }, [])
+
+    // NFT event sync
+    useNFTEventSync({
+        onIdentityCreated: () => {
+            console.log('Identity created - refreshing marketplace')
+            window.dispatchEvent(new CustomEvent('marketplaceRefresh'))
+        },
+        onIdentityPurchased: () => {
+            console.log('Identity purchased - refreshing marketplace')
+            window.dispatchEvent(new CustomEvent('marketplaceRefresh'))
+        },
+        refreshIdentity: () => {
+            console.log('Identity updated - refreshing marketplace')
+            window.dispatchEvent(new CustomEvent('marketplaceRefresh'))
+        }
+    })
+
+    // Auto-refresh every 30 seconds
+    useEffect(() => {
+        const interval = setInterval(() => {
+            if (document.visibilityState === 'visible') {
+                console.log('⏰ Periodic marketplace refresh')
+                loadMarketplaceItems()
+                setLastRefresh(Date.now())
+            }
+        }, 30000)
+
+        return () => clearInterval(interval)
+    }, [])
+
+    // Page visibility refresh
+    useEffect(() => {
+        const handleVisibilityChange = () => {
+            if (document.visibilityState === 'visible') {
+                console.log('👀 Page became visible - refreshing marketplace')
+                setTimeout(() => {
+                    loadMarketplaceItems()
+                    setLastRefresh(Date.now())
+                }, 1000)
+            }
+        }
+
+        document.addEventListener('visibilitychange', handleVisibilityChange)
+
+        return () => {
+            document.removeEventListener('visibilitychange', handleVisibilityChange)
+        }
     }, [])
 
     const loadMarketplaceItems = async () => {
@@ -70,9 +148,10 @@ export default function MarketplacePage() {
             setLoading(true);
             console.log('🔄 Loading marketplace items...');
 
-            // Method 1: Try the new API endpoint first
+            // Method 1: Try the API endpoint first
             try {
-                const response = await fetch('/api/marketplace/listings');
+                // Uses API_BASE_URL for both local and production
+                const response = await fetch(`${API_BASE_URL}/api/marketplace/listings`);
                 const data = await response.json();
 
                 if (data.success && data.listings && data.listings.length > 0) {
@@ -80,7 +159,7 @@ export default function MarketplacePage() {
 
                     const formattedItems = data.listings.map((listing: any) => ({
                         tokenId: listing.tokenId,
-                        username: listing.username, // REAL USERNAME FROM BACKEND
+                        username: listing.username,
                         primarySkill: listing.primarySkill,
                         reputationScore: listing.reputationScore,
                         skillLevel: listing.skillLevel,
@@ -99,7 +178,7 @@ export default function MarketplacePage() {
                 console.error('API endpoint failed, trying contract directly:', apiError);
             }
 
-            // Method 2: Direct contract calls using helper function
+            // Method 2: Direct contract calls
             if (!publicClient) {
                 console.log('PublicClient not available yet');
                 return;
@@ -107,9 +186,7 @@ export default function MarketplacePage() {
 
             console.log('📞 Using direct contract calls...');
 
-            // Use the helper function to get listed identities
             const [tokenIds, prices] = await getListedIdentities(publicClient);
-
             console.log('📋 Listed tokens from contract:', tokenIds.length);
 
             if (tokenIds.length === 0) {
@@ -121,7 +198,6 @@ export default function MarketplacePage() {
 
             const marketplaceItems: MarketplaceItem[] = [];
 
-            // Process each listed token
             for (let i = 0; i < tokenIds.length; i++) {
                 try {
                     const tokenId = Number(tokenIds[i]);
@@ -129,12 +205,12 @@ export default function MarketplacePage() {
 
                     console.log(`🔍 Processing token ${tokenId}...`);
 
-                    // Try to get identity data from your backend API first
                     let username = `Identity #${tokenId}`;
                     let identityData: any = null;
 
+                    // Try backend first - UPDATED: Uses API_BASE_URL
                     try {
-                        const backendResponse = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000'}/api/identity/${tokenId}`);
+                        const backendResponse = await fetch(`${API_BASE_URL}/api/identity/${tokenId}`);
                         if (backendResponse.ok) {
                             const backendResult = await backendResponse.json();
                             if (backendResult.success && backendResult.identity) {
@@ -147,7 +223,7 @@ export default function MarketplacePage() {
                         console.log(`⚠️ Backend API failed for token ${tokenId}, using contract`);
                     }
 
-                    // Fallback: Get identity from contract if backend failed
+                    // Fallback to contract
                     if (!identityData) {
                         try {
                             const contractIdentity = await publicClient.readContract({
@@ -168,11 +244,11 @@ export default function MarketplacePage() {
                             };
                         } catch (contractError) {
                             console.error(`Error getting contract identity for ${tokenId}:`, contractError);
-                            continue; // Skip this token
+                            continue;
                         }
                     }
 
-                    // Get seller address
+                    // Get seller
                     let seller = '0x...';
                     try {
                         seller = await publicClient.readContract({
@@ -187,7 +263,7 @@ export default function MarketplacePage() {
 
                     const marketplaceItem: MarketplaceItem = {
                         tokenId: identityData.tokenId,
-                        username: identityData.username, // REAL USERNAME
+                        username: identityData.username,
                         primarySkill: identityData.primarySkill,
                         reputationScore: identityData.reputationScore,
                         skillLevel: identityData.skillLevel,
@@ -218,11 +294,6 @@ export default function MarketplacePage() {
         }
     };
 
-    const generateDemoMarketplaceData = (): MarketplaceItem[] => {
-        // Return empty array 
-        return []
-    }
-
     const filterAndSortItems = () => {
         let filtered = items.filter(item => {
             const matchesSearch = item.username.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -236,7 +307,6 @@ export default function MarketplacePage() {
             return matchesSearch && matchesFilter && item.isForSale
         })
 
-        // Sort items
         filtered.sort((a, b) => {
             const aPrice = Number(formatEther(a.currentPrice))
             const bPrice = Number(formatEther(b.currentPrice))
@@ -267,32 +337,166 @@ export default function MarketplacePage() {
 
         try {
             setBuyingTokenId(item.tokenId)
+            console.log(`🛒 Attempting to buy NFT #${item.tokenId} for ${formatEther(item.currentPrice)} ETH`);
+
+            // Validate purchase
+            const validation = await canBuyNFT(publicClient!, item.tokenId, address);
+            if (!validation.canBuy) {
+                toast.error(validation.reason || 'Cannot buy this NFT');
+                setBuyingTokenId(null);
+                return;
+            }
+
+            // Get current listing info
+            const listingInfo = await publicClient!.readContract({
+                address: CONTRACT_ADDRESS,
+                abi: CONTRACT_ABI,
+                functionName: 'getListingInfo',
+                args: [BigInt(item.tokenId)]
+            }) as [boolean, bigint];
+
+            if (!listingInfo[0]) {
+                toast.error('NFT is no longer listed for sale');
+                setBuyingTokenId(null);
+                return;
+            }
+
+            const currentPrice = listingInfo[1];
+            if (currentPrice !== item.currentPrice) {
+                toast.error(`Price has changed. Current price: ${formatEther(currentPrice)} ETH`);
+                setBuyingTokenId(null);
+                return;
+            }
+
+            // Estimate gas
+            let gasLimit;
+            try {
+                gasLimit = await estimateBuyGas(publicClient!, item.tokenId, address, currentPrice);
+                console.log(`💨 Estimated gas: ${gasLimit}`);
+            } catch (gasError) {
+                console.warn('Gas estimation failed, using default:', gasError);
+                gasLimit = BigInt(300000);
+            }
+
+            toast.loading('Preparing transaction...', { id: 'buying' });
 
             writeContract({
                 address: CONTRACT_ADDRESS,
                 abi: CONTRACT_ABI,
                 functionName: 'buyIdentity',
                 args: [BigInt(item.tokenId)],
-                value: item.currentPrice
-            })
+                value: currentPrice,
+                gas: gasLimit,
+            });
 
-            toast.loading('Processing purchase...', { id: 'buying' })
+            toast.loading(`Processing purchase of ${item.username}...`, { id: 'buying' });
+
         } catch (error: any) {
-            console.error('Error buying NFT:', error)
-            toast.dismiss('buying')
-            toast.error(error.shortMessage || error.message || 'Failed to buy NFT')
-            setBuyingTokenId(null)
+            console.error('Error buying NFT:', error);
+            toast.dismiss('buying');
+
+            let errorMessage = 'Failed to buy NFT';
+
+            if (error.message?.includes('insufficient funds')) {
+                errorMessage = 'Insufficient funds for transaction';
+            } else if (error.message?.includes('user rejected')) {
+                errorMessage = 'Transaction rejected by user';
+            } else if (error.message?.includes('gas')) {
+                errorMessage = 'Transaction failed due to gas issues';
+            } else if (error.shortMessage) {
+                errorMessage = error.shortMessage;
+            } else if (error.message) {
+                errorMessage = error.message;
+            }
+
+            toast.error(errorMessage);
+            setBuyingTokenId(null);
         }
     }
 
+    // Handle successful purchase
     useEffect(() => {
-        if (isConfirmed && buyingTokenId) {
-            toast.dismiss()
-            toast.success('NFT purchased successfully!')
-            setBuyingTokenId(null)
-            loadMarketplaceItems() // Refresh marketplace
+        if (isConfirmed && buyingTokenId && hash) {
+            const updateAfterPurchase = async () => {
+                try {
+                    toast.dismiss('buying');
+                    toast.success('🎉 NFT purchased successfully!');
+
+                    try {
+                        const response = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:5000'}/api/nft/buy`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                tokenId: buyingTokenId,
+                                buyer: address,
+                                txHash: hash
+                            })
+                        });
+
+                        if (response.ok) {
+                            console.log('✅ Backend synced successfully');
+                        }
+                    } catch (backendError) {
+                        console.warn('Backend sync failed (non-critical):', backendError);
+                    }
+
+                    setTimeout(() => {
+                        loadMarketplaceItems();
+                        window.dispatchEvent(new CustomEvent('portfolioRefresh'));
+                        window.dispatchEvent(new CustomEvent('marketplaceRefresh'));
+                    }, 3000);
+
+                } catch (error) {
+                    console.error('Error in post-purchase update:', error);
+                } finally {
+                    setBuyingTokenId(null);
+                }
+            };
+
+            updateAfterPurchase();
         }
-    }, [isConfirmed, buyingTokenId])
+    }, [isConfirmed, buyingTokenId, hash, address]);
+
+    // Debug functions
+    const debugMarketplaceRefresh = () => {
+        console.log('🐛 DEBUG: Manual refresh triggered')
+        console.log('🐛 Current items count:', items.length)
+        setLastRefresh(Date.now())
+        loadMarketplaceItems()
+    }
+
+    const debugBlockchainState = async () => {
+        if (!publicClient) return
+
+        try {
+            console.log('🐛 DEBUG: Checking blockchain state...')
+
+            const totalIdentities = await publicClient.readContract({
+                address: CONTRACT_ADDRESS,
+                abi: CONTRACT_ABI,
+                functionName: 'getTotalIdentities'
+            }) as bigint
+
+            console.log(`🐛 Total identities on chain: ${totalIdentities}`)
+
+            for (let i = 12; i <= Number(totalIdentities); i++) {
+                try {
+                    const listingInfo = await publicClient.readContract({
+                        address: CONTRACT_ADDRESS,
+                        abi: CONTRACT_ABI,
+                        functionName: 'getListingInfo',
+                        args: [BigInt(i)]
+                    }) as [boolean, bigint]
+
+                    console.log(`🐛 Token ${i}: Listed=${listingInfo[0]}, Price=${Number(listingInfo[1]) / 1e18} STT`)
+                } catch (e) {
+                    console.log(`🐛 Token ${i}: Does not exist`)
+                }
+            }
+        } catch (error) {
+            console.error('🐛 Debug error:', error)
+        }
+    }
 
     if (loading) {
         return (
@@ -323,6 +527,62 @@ export default function MarketplacePage() {
                         Trade SomniaID profiles and invest in rising talent
                     </p>
                 </motion.div>
+
+                {/* Debug Panel */}
+                <div className="mb-6 p-4 border border-gray-200 rounded-lg bg-white">
+                    <div className="flex items-center justify-between mb-4">
+                        <div className="flex items-center space-x-4">
+                            <button
+                                onClick={() => setDebugMode(!debugMode)}
+                                className="px-3 py-1 bg-gray-600 text-white rounded text-sm hover:bg-gray-700"
+                            >
+                                {debugMode ? 'Hide' : 'Show'} Debug Tools
+                            </button>
+                            <div className="flex items-center space-x-2">
+                                <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
+                                <span className="text-sm text-gray-600">Live | Last refresh: {new Date(lastRefresh).toLocaleTimeString()}</span>
+                            </div>
+                        </div>
+                        <div className="text-sm text-gray-600">
+                            Showing {filteredItems.length} of {items.length} listings
+                        </div>
+                    </div>
+
+                    {debugMode && (
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                            <button
+                                onClick={debugMarketplaceRefresh}
+                                className="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 text-sm"
+                            >
+                                🔄 Manual Refresh
+                            </button>
+
+                            <button
+                                onClick={() => {
+                                    console.log('🧪 Testing event emission')
+                                    window.dispatchEvent(new CustomEvent('marketplaceRefresh'))
+                                }}
+                                className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 text-sm"
+                            >
+                                🧪 Test Event
+                            </button>
+
+                            <button
+                                onClick={debugBlockchainState}
+                                className="px-4 py-2 bg-purple-600 text-white rounded hover:bg-purple-700 text-sm"
+                            >
+                                🔍 Check Blockchain
+                            </button>
+
+                            <button
+                                onClick={() => window.location.reload()}
+                                className="px-4 py-2 bg-orange-600 text-white rounded hover:bg-orange-700 text-sm"
+                            >
+                                🔄 Hard Refresh
+                            </button>
+                        </div>
+                    )}
+                </div>
 
                 {/* Stats Bar */}
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
@@ -421,8 +681,7 @@ export default function MarketplacePage() {
                                 transition={{ delay: index * 0.1 }}
                                 className="bg-white rounded-2xl overflow-hidden shadow-sm border border-gray-100 hover:shadow-lg transition-all duration-300 cursor-pointer hover:scale-105"
                                 onClick={() => {
-                                    // ADDED: Click to view NFT details
-                                    if (item.tokenId < 1000) { // Real NFT
+                                    if (item.tokenId < 1000) {
                                         window.location.href = `/identity/${item.tokenId}`
                                     } else {
                                         toast.error('This is demo data - real NFTs will be clickable')
@@ -493,24 +752,14 @@ export default function MarketplacePage() {
                                     {/* Buy Button */}
                                     <button
                                         onClick={(e) => {
-                                            e.stopPropagation() // Prevent card click
-                                            if (item.tokenId >= 1001) {
-                                                toast.error('This is demo data. Real NFTs will have lower token IDs.')
-                                                return
-                                            }
+                                            e.stopPropagation()
                                             handleBuyNFT(item)
                                         }}
-                                        disabled={!isConnected || buyingTokenId === item.tokenId || isPending || isConfirming || item.tokenId >= 1001}
-                                        className={`w-full py-3 px-4 rounded-lg font-medium transition-all duration-300 flex items-center justify-center space-x-2 ${item.tokenId >= 1001
-                                            ? 'bg-gray-400 text-gray-600 cursor-not-allowed'
-                                            : 'bg-gradient-to-r from-blue-600 to-purple-600 text-white hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed'
-                                            }`}
+                                        disabled={!isConnected || buyingTokenId === item.tokenId || isPending || isConfirming}
+                                        className={`w-full py-3 px-4 rounded-lg font-medium transition-all duration-300 flex items-center justify-center space-x-2 
+                                            bg-gradient-to-r from-blue-600 to-purple-600 text-white hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed`}
                                     >
-                                        {item.tokenId >= 1001 ? (
-                                            <>
-                                                <span>Demo NFT</span>
-                                            </>
-                                        ) : buyingTokenId === item.tokenId ? (
+                                        {buyingTokenId === item.tokenId ? (
                                             <>
                                                 <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
                                                 <span>{isConfirming ? 'Confirming...' : 'Buying...'}</span>

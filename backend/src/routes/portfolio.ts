@@ -20,7 +20,7 @@ router.get('/:address', async (req: Request, res: Response): Promise<void> => {
         // Get portfolio data from blockchain sync service
         const portfolioData = await BlockchainSyncService.getPortfolioData(address);
 
-        if (!portfolioData || portfolioData.identities.length === 0) {
+        if (!portfolioData || portfolioData.portfolioIdentities.length === 0) {
             res.json({
                 success: true,
                 ownedNFTs: [],
@@ -39,11 +39,12 @@ router.get('/:address', async (req: Request, res: Response): Promise<void> => {
             return;
         }
 
-        const { transfers, identities, totalValue } = portfolioData;
+        // FIXED: Use correct property names from getPortfolioData()
+        const { portfolioNFTs, portfolioIdentities, totalPortfolioValue } = portfolioData;
 
         // Calculate detailed analytics
-        const portfolioItems = identities.map((identity: any) => {
-            const purchaseData = transfers.find((t: any) => t.token_id === identity.tokenId);
+        const portfolioItems = portfolioIdentities.map((identity: any) => {
+            const purchaseData = portfolioNFTs.find((t: any) => t.token_id === identity.tokenId);
             const priceChange = identity.currentPrice - (purchaseData?.price || identity.currentPrice);
             const priceChangePercent = purchaseData?.price
                 ? ((identity.currentPrice - purchaseData.price) / purchaseData.price) * 100
@@ -68,32 +69,32 @@ router.get('/:address', async (req: Request, res: Response): Promise<void> => {
             };
         });
 
-        // Calculate portfolio totals
-        const totalCurrentValue = portfolioItems.reduce((sum, item) => sum + item.currentPrice, 0);
-        const totalInvestedValue = portfolioItems.reduce((sum, item) => sum + item.purchasePrice, 0);
+        // Calculate portfolio totals - FIXED: Added explicit types
+        const totalCurrentValue = portfolioItems.reduce((sum: number, item: any) => sum + item.currentPrice, 0);
+        const totalInvestedValue = portfolioItems.reduce((sum: number, item: any) => sum + item.purchasePrice, 0);
         const totalPnL = totalCurrentValue - totalInvestedValue;
         const totalPnLPercent = totalInvestedValue > 0 ? (totalPnL / totalInvestedValue) * 100 : 0;
 
-        // Portfolio analytics
+        // Portfolio analytics - FIXED: Added explicit types
         const analytics = {
-            totalTransactions: transfers.length,
+            totalTransactions: portfolioNFTs.length,
             averageHoldingPeriod: portfolioItems.length > 0
-                ? portfolioItems.reduce((sum, item) => sum + item.holdingPeriod, 0) / portfolioItems.length
+                ? portfolioItems.reduce((sum: number, item: any) => sum + item.holdingPeriod, 0) / portfolioItems.length
                 : 0,
             bestPerformer: portfolioItems.length > 0
-                ? portfolioItems.reduce((best, item) => item.priceChangePercent > best.priceChangePercent ? item : best)
+                ? portfolioItems.reduce((best: any, item: any) => item.priceChangePercent > best.priceChangePercent ? item : best)
                 : null,
             worstPerformer: portfolioItems.length > 0
-                ? portfolioItems.reduce((worst, item) => item.priceChangePercent < worst.priceChangePercent ? item : worst)
+                ? portfolioItems.reduce((worst: any, item: any) => item.priceChangePercent < worst.priceChangePercent ? item : worst)
                 : null,
-            totalAchievements: portfolioItems.reduce((sum, item) => sum + item.achievementCount, 0),
+            totalAchievements: portfolioItems.reduce((sum: number, item: any) => sum + item.achievementCount, 0),
             averageReputationScore: portfolioItems.length > 0
-                ? portfolioItems.reduce((sum, item) => sum + item.reputationScore, 0) / portfolioItems.length
+                ? portfolioItems.reduce((sum: number, item: any) => sum + item.reputationScore, 0) / portfolioItems.length
                 : 0,
             portfolioPerformance: totalPnLPercent > 10 ? 'excellent' : totalPnLPercent > 0 ? 'good' : totalPnLPercent > -10 ? 'fair' : 'poor',
             diversification: {
-                skillTypes: [...new Set(portfolioItems.map(item => item.primarySkill))].length,
-                skillDistribution: portfolioItems.reduce((dist, item) => {
+                skillTypes: [...new Set(portfolioItems.map((item: any) => item.primarySkill))].length,
+                skillDistribution: portfolioItems.reduce((dist: { [key: string]: number }, item: any) => {
                     dist[item.primarySkill] = (dist[item.primarySkill] || 0) + 1;
                     return dist;
                 }, {} as { [key: string]: number })
@@ -103,7 +104,7 @@ router.get('/:address', async (req: Request, res: Response): Promise<void> => {
         // Include historical data if requested
         let historicalData = {};
         if (includeHistory) {
-            const tokenIds = portfolioItems.map(item => item.tokenId);
+            const tokenIds = portfolioItems.map((item: any) => item.tokenId);
 
             const [priceHistories, achievementHistories] = await Promise.all([
                 PriceHistory.find({ token_id: { $in: tokenIds } })

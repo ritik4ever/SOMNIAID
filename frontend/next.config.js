@@ -1,7 +1,6 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
     experimental: {
-        transpilePackages: ['some-package'],
         // appDir: true,
     },
     images: {

@@ -5,19 +5,20 @@ import AchievementHistory from '../models/AchievementHistory';
 import GoalProgress from '../models/GoalProgress';
 import PriceHistory from '../models/PriceHistory';
 
-// Get contract address from environment
-const CONTRACT_ADDRESS = process.env.CONTRACT_ADDRESS || '0x6f2CC3Fb16894A19aa1eA275158F7dd4d345a983';
+// Get contract address from environment - EXPORTED for other files
+export const CONTRACT_ADDRESS = process.env.CONTRACT_ADDRESS || '0xCf769a0f49507AFe6d7E4cADE715B9c4caa7158C';
 const RPC_URL = process.env.RPC_URL || 'https://dream-rpc.somnia.network/';
 
-// Enhanced ABI with all events we need to listen to
-const CONTRACT_ABI = [
+// Enhanced ABI with all events we need to listen to - EXPORTED for other files
+export const CONTRACT_ABI = [
     // View functions for reading data
     'function ownerOf(uint256 tokenId) view returns (address)',
     'function getIdentity(uint256 tokenId) view returns (tuple(uint256 reputationScore, uint256 skillLevel, uint256 achievementCount, uint256 lastUpdate, string primarySkill, bool isVerified))',
     'function hasIdentity(address owner) view returns (bool)',
     'function getTokenIdByAddress(address owner) view returns (uint256)',
     'function getTotalIdentities() view returns (uint256)',
-    'function getListedIdentities() view returns (uint256[], uint256[])',
+    'function getListingInfo(uint256 tokenId) view returns (bool isListed, uint256 price)',
+    'function isListed(uint256 tokenId) view returns (bool)',
 
     // Contract info functions
     'function name() view returns (string)',
@@ -28,6 +29,7 @@ const CONTRACT_ABI = [
     // Events for monitoring
     'event IdentityCreated(uint256 indexed tokenId, address indexed owner, string username)',
     'event IdentityPurchased(uint256 indexed tokenId, address indexed buyer, address indexed seller, uint256 price)',
+    'event IdentityListed(uint256 indexed tokenId, uint256 price)',
     'event AchievementUnlocked(uint256 indexed tokenId, string title, uint256 points, uint256 priceImpact)',
     'event PriceUpdated(uint256 indexed tokenId, uint256 oldPrice, uint256 newPrice, string reason)',
     'event GoalCompleted(uint256 indexed tokenId, uint256 goalIndex, uint256 rewardPoints)',
@@ -35,6 +37,20 @@ const CONTRACT_ABI = [
     'event ReputationUpdated(uint256 indexed tokenId, uint256 newScore, uint256 timestamp)',
     'event Transfer(address indexed from, address indexed to, uint256 indexed tokenId)'
 ];
+
+// Create and export publicClient for viem-style interface compatibility
+const provider = new ethers.JsonRpcProvider(RPC_URL);
+export const publicClient = {
+    readContract: async (params: {
+        address: string;
+        abi: any[];
+        functionName: string;
+        args?: any[];
+    }) => {
+        const contract = new ethers.Contract(params.address, params.abi, provider);
+        return await contract[params.functionName](...(params.args || []));
+    }
+};
 
 export class BlockchainSyncService {
     private provider?: ethers.JsonRpcProvider;
@@ -55,7 +71,7 @@ export class BlockchainSyncService {
             this.provider = new ethers.JsonRpcProvider(RPC_URL);
             this.contract = new ethers.Contract(CONTRACT_ADDRESS, CONTRACT_ABI, this.provider);
 
-            console.log('🔗 Enhanced Blockchain Sync Service initialized:');
+            console.log('🔗 FINAL Enhanced Blockchain Sync Service initialized:');
             console.log('   Contract Address:', CONTRACT_ADDRESS);
             console.log('   RPC URL:', RPC_URL);
 
@@ -87,46 +103,106 @@ export class BlockchainSyncService {
         return true;
     }
 
-
-
     private async startEventListening() {
         if (!this.contract) {
             console.error('❌ Cannot start event listening: Contract not available');
             return;
         }
 
-        console.log('🎧 Starting enhanced blockchain event listening...');
+        console.log('🎧 Starting COMPREHENSIVE blockchain event listening...');
 
         try {
             // ========== CRITICAL: IdentityCreated Event Listener ==========
-            const identityCreatedListener = this.contract.on('IdentityCreated', async (tokenId, owner, username, event) => {
-                console.log('🆕 IdentityCreated event:', {
-                    tokenId: tokenId.toString(),
-                    owner,
-                    username,
-                    txHash: event.transactionHash
+            const identityCreatedListener = this.contract.on('IdentityCreated', async (...args) => {
+                console.log('🆕 RAW IdentityCreated event args:', args);
+
+                let tokenId, owner, username, event;
+
+                // Handle different event signatures flexibly
+                if (args.length >= 4) {
+                    [tokenId, owner, username, event] = args;
+                } else if (args.length >= 3) {
+                    [tokenId, owner, event] = args;
+                    username = null;
+                }
+
+                console.log('🆕 Parsed IdentityCreated:', {
+                    tokenId: tokenId?.toString(),
+                    owner: owner,
+                    username: username || 'NOT_PROVIDED_BY_CONTRACT',
+                    txHash: event?.transactionHash
                 });
 
                 await this.handleIdentityCreated({
                     tokenId: Number(tokenId),
                     owner: owner.toLowerCase(),
-                    username: username, // ⭐ ACTUAL USERNAME FROM BLOCKCHAIN
-                    txHash: event.transactionHash,
-                    blockNumber: event.blockNumber,
+                    username: username || null,
+                    txHash: event?.transactionHash || '',
+                    blockNumber: event?.blockNumber || 0,
                     timestamp: new Date()
                 });
             });
             this.eventListeners.set('IdentityCreated', identityCreatedListener);
 
-            // Listen for PriceUpdated events - REAL-TIME PRICE CHANGES
-            const priceListener = this.contract.on('PriceUpdated', async (tokenId, oldPrice, newPrice, reason, event) => {
-                console.log('💰 PriceUpdated event:', {
+            // ========== CRITICAL: Transfer Event Handler ==========
+            const transferListener = this.contract.on('Transfer', async (from, to, tokenId, event) => {
+                // Skip mint transactions (from = 0x0)
+                if (from === '0x0000000000000000000000000000000000000000') {
+                    console.log('🎨 Mint event (skipping):', tokenId.toString());
+                    return;
+                }
+
+                console.log('🔄 Transfer event:', {
                     tokenId: tokenId.toString(),
-                    oldPrice: ethers.formatEther(oldPrice),
-                    newPrice: ethers.formatEther(newPrice),
-                    reason
+                    from: from.toLowerCase(),
+                    to: to.toLowerCase(),
+                    txHash: event.transactionHash
                 });
 
+                await this.handleNFTTransfer({
+                    tokenId: Number(tokenId),
+                    from: from.toLowerCase(),
+                    to: to.toLowerCase(),
+                    txHash: event.transactionHash,
+                    blockNumber: event.blockNumber,
+                    timestamp: new Date()
+                });
+            });
+            this.eventListeners.set('Transfer', transferListener);
+
+            // ========== IdentityPurchased Event ==========
+            const purchaseListener = this.contract.on('IdentityPurchased', async (tokenId, buyer, seller, price, event) => {
+                console.log('💰 IdentityPurchased event:', {
+                    tokenId: tokenId.toString(),
+                    buyer: buyer.toLowerCase(),
+                    seller: seller.toLowerCase(),
+                    price: ethers.formatEther(price),
+                    txHash: event.transactionHash
+                });
+
+                await this.handleIdentityPurchased({
+                    tokenId: Number(tokenId),
+                    buyer: buyer.toLowerCase(),
+                    seller: seller.toLowerCase(),
+                    price: Number(ethers.formatEther(price)),
+                    txHash: event.transactionHash,
+                    blockNumber: event.blockNumber
+                });
+            });
+            this.eventListeners.set('IdentityPurchased', purchaseListener);
+
+            // ========== IdentityListed Event ==========
+            const listingListener = this.contract.on('IdentityListed', async (tokenId, price, event) => {
+                console.log('🏷️ IdentityListed event:', {
+                    tokenId: tokenId.toString(),
+                    price: ethers.formatEther(price)
+                });
+                // Handle listing logic if needed
+            });
+            this.eventListeners.set('IdentityListed', listingListener);
+
+            // ========== Other Event Listeners ==========
+            const priceListener = this.contract.on('PriceUpdated', async (tokenId, oldPrice, newPrice, reason, event) => {
                 await this.handlePriceUpdated({
                     tokenId: Number(tokenId),
                     oldPrice: Number(ethers.formatEther(oldPrice)),
@@ -138,10 +214,7 @@ export class BlockchainSyncService {
             });
             this.eventListeners.set('PriceUpdated', priceListener);
 
-            // Listen for GoalCompleted events - PRICE REWARDS
             const goalCompletedListener = this.contract.on('GoalCompleted', async (tokenId, goalIndex, rewardPoints, event) => {
-                console.log('🎯 GoalCompleted event:', { tokenId: tokenId.toString(), goalIndex: goalIndex.toString(), rewardPoints: rewardPoints.toString() });
-
                 await this.handleGoalCompleted({
                     tokenId: Number(tokenId),
                     goalIndex: Number(goalIndex),
@@ -152,10 +225,7 @@ export class BlockchainSyncService {
             });
             this.eventListeners.set('GoalCompleted', goalCompletedListener);
 
-            // Listen for GoalFailed events - PRICE PENALTIES
             const goalFailedListener = this.contract.on('GoalFailed', async (tokenId, goalIndex, pricePenalty, event) => {
-                console.log('❌ GoalFailed event:', { tokenId: tokenId.toString(), goalIndex: goalIndex.toString(), pricePenalty: pricePenalty.toString() });
-
                 await this.handleGoalFailed({
                     tokenId: Number(tokenId),
                     goalIndex: Number(goalIndex),
@@ -166,10 +236,7 @@ export class BlockchainSyncService {
             });
             this.eventListeners.set('GoalFailed', goalFailedListener);
 
-            // Listen for ReputationUpdated events
             const reputationListener = this.contract.on('ReputationUpdated', async (tokenId, newScore, timestamp, event) => {
-                console.log('⭐ ReputationUpdated event:', { tokenId: tokenId.toString(), newScore: newScore.toString() });
-
                 await this.handleReputationUpdated({
                     tokenId: Number(tokenId),
                     newScore: Number(newScore),
@@ -179,192 +246,176 @@ export class BlockchainSyncService {
             });
             this.eventListeners.set('ReputationUpdated', reputationListener);
 
-            console.log('✅ Blockchain event listening started successfully');
-            console.log(`   Listening for ${this.eventListeners.size} event types`);
+            const achievementListener = this.contract.on('AchievementUnlocked', async (tokenId, title, points, priceImpact, event) => {
+                await this.handleAchievementUnlocked({
+                    tokenId: Number(tokenId),
+                    title,
+                    points: Number(points),
+                    priceImpact: Number(priceImpact),
+                    txHash: event.transactionHash,
+                    timestamp: new Date()
+                });
+            });
+            this.eventListeners.set('AchievementUnlocked', achievementListener);
 
-            console.log('✅ Enhanced event listening started with username capture');
+            console.log('✅ COMPREHENSIVE event listening started');
+            console.log(`   Active listeners: ${this.eventListeners.size}`);
 
         } catch (error) {
-            console.error('❌ Error starting enhanced event listeners:', error);
+            console.error('❌ Error starting event listeners:', error);
         }
     }
 
+    // ========== IDENTITY CREATION HANDLER ==========
     private async handleIdentityCreated(data: {
         tokenId: number;
         owner: string;
-        username: string;
+        username: string | null;
         txHash: string;
         blockNumber: number;
         timestamp: Date;
     }) {
         try {
-            console.log(`🆕 Processing IdentityCreated: Token #${data.tokenId} → ${data.username} (${data.owner})`);
+            console.log(`🆕 Processing IdentityCreated: Token #${data.tokenId} for ${data.owner}`);
 
-            // Check if identity already exists by tokenId (primary key)
+            // Check if identity exists by tokenId
             let identity = await Identity.findOne({ tokenId: data.tokenId });
 
             if (identity) {
-                console.log(`📝 Updating existing identity ${identity.tokenId} with blockchain data`);
+                identity.username = data.username || `User #${data.tokenId}`;
 
-                // Update existing identity - keep existing username to avoid conflicts
+                // Preserve username unless it's a placeholder
+                const isPlaceholder = identity.username.startsWith('User #') ||
+                    identity.username.startsWith('Identity #') ||
+                    identity.username.startsWith('User') && /^\d+$/.test(identity.username.replace('User', ''));
+
+                if (data.username && data.username !== 'NOT_PROVIDED_BY_CONTRACT' && isPlaceholder) {
+                    console.log(`🔄 Updating placeholder: ${identity.username} → ${data.username}`);
+                    identity.username = data.username;
+                } else {
+                    console.log(`⭐ Preserving username: ${identity.username}`);
+                }
+
                 identity.ownerAddress = data.owner.toLowerCase();
-                identity.isVerified = true; // Mark as verified since it's on blockchain
+                identity.isVerified = true;
+                identity.isOriginalOwner = true;
                 identity.txHash = data.txHash;
                 identity.lastUpdate = Date.now();
-                identity.updatedAt = new Date();
-
-                // Only update username if it's currently a placeholder
-                if (identity.username.startsWith('User') || identity.username.startsWith('Identity #')) {
-                    try {
-                        identity.username = data.username;
-                    } catch (usernameError: any) {
-                        // If username conflict, keep the existing one
-                        console.log(`⚠️ Keeping existing username due to conflict: ${identity.username}`);
-                    }
-                }
 
                 await identity.save();
-                console.log(`✅ Updated identity ${data.tokenId}: ${identity.username}`);
+                console.log(`✅ Updated identity: ${identity.username}`);
 
             } else {
-                // Check if username already exists before creating
-                const existingUser = await Identity.findOne({ username: data.username });
+                // Create new identity
+                console.log(`✨ Creating NEW identity for Token #${data.tokenId}`);
 
-                if (existingUser) {
-                    console.log(`⚠️ Username "${data.username}" already exists for token ${existingUser.tokenId}`);
-                    console.log(`🔧 Creating identity with modified username`);
+                let finalUsername = data.username && data.username !== 'NOT_PROVIDED_BY_CONTRACT'
+                    ? data.username
+                    : `User #${data.tokenId}`;
 
-                    // Create with modified username to avoid conflict
-                    const modifiedUsername = `${data.username}_${data.tokenId}`;
+                // Handle username conflicts
+                let attempt = 0;
+                let usernameToTry = finalUsername;
 
-                    identity = new Identity({
-                        tokenId: data.tokenId,
-                        username: modifiedUsername, // Use modified username
-                        primarySkill: 'Blockchain Developer',
-                        ownerAddress: data.owner.toLowerCase(),
-                        experience: 'beginner',
-                        reputationScore: 100,
-                        skillLevel: 1,
-                        achievementCount: 0,
-                        isVerified: true,
-                        nftBasePrice: 10,
-                        currentPrice: 10,
-                        profile: {
-                            bio: `Welcome ${data.username}! Your journey on SomniaID begins now.`,
-                            skills: [],
-                            achievements: [],
-                            goals: [],
-                            socialLinks: {},
-                            education: [],
-                            workExperience: []
-                        },
-                        profileViews: 0,
-                        followers: [],
-                        following: [],
-                        lastUpdate: Date.now(),
-                        txHash: data.txHash,
-                        createdAt: new Date(),
-                        lastMetadataUpdate: Date.now()
-                    });
-                } else {
-                    // Create new identity with original username
-                    console.log(`✨ Creating new identity from blockchain event`);
+                while (attempt < 3) {
+                    const existingUser = await Identity.findOne({ username: usernameToTry });
+                    if (!existingUser) {
+                        finalUsername = usernameToTry;
+                        break;
+                    }
 
-                    identity = new Identity({
-                        tokenId: data.tokenId,
-                        username: data.username, // Original username
-                        primarySkill: 'Blockchain Developer',
-                        ownerAddress: data.owner.toLowerCase(),
-                        experience: 'beginner',
-                        reputationScore: 100,
-                        skillLevel: 1,
-                        achievementCount: 0,
-                        isVerified: true,
-                        nftBasePrice: 10,
-                        currentPrice: 10,
-                        profile: {
-                            bio: `Welcome ${data.username}! Your journey on SomniaID begins now.`,
-                            skills: [],
-                            achievements: [],
-                            goals: [],
-                            socialLinks: {},
-                            education: [],
-                            workExperience: []
-                        },
-                        profileViews: 0,
-                        followers: [],
-                        following: [],
-                        lastUpdate: Date.now(),
-                        txHash: data.txHash,
-                        createdAt: new Date(),
-                        lastMetadataUpdate: Date.now()
-                    });
+                    attempt++;
+                    usernameToTry = `${finalUsername}_${data.tokenId}_${attempt}`;
                 }
 
+                identity = new Identity({
+                    tokenId: data.tokenId,
+                    username: finalUsername,
+                    primarySkill: 'Blockchain Developer',
+                    ownerAddress: data.owner.toLowerCase(),
+                    experience: 'beginner',
+                    reputationScore: 100,
+                    skillLevel: 1,
+                    achievementCount: 0,
+                    isVerified: true,
+                    isOriginalOwner: true, // CRITICAL: Mark as identity creator
+                    nftBasePrice: 10,
+                    currentPrice: 10,
+                    profile: {
+                        bio: 'Welcome to SomniaID! Your digital identity journey begins now.',
+                        skills: [],
+                        achievements: [],
+                        goals: [],
+                        socialLinks: {},
+                        education: [],
+                        workExperience: []
+                    },
+                    profileViews: 0,
+                    followers: [],
+                    following: [],
+                    lastUpdate: Date.now(),
+                    txHash: data.txHash,
+                    createdAt: new Date(),
+                    lastMetadataUpdate: Date.now()
+                });
+
                 await identity.save();
-                console.log(`✅ Created identity: Token #${data.tokenId} → ${identity.username}`);
+                console.log(`✅ Created identity: ${finalUsername} (ORIGINAL OWNER)`);
             }
 
-            // Emit real-time event for frontend
+            // Broadcast event
             if ((global as any).realtimeService) {
                 (global as any).realtimeService.broadcastActivity({
                     type: 'identity_created',
                     tokenId: data.tokenId,
-                    username: identity.username, // Use the actual saved username
+                    username: identity.username,
                     data: { owner: data.owner, txHash: data.txHash },
                     timestamp: new Date()
                 });
             }
 
         } catch (error: any) {
-            console.error('❌ Error handling IdentityCreated event:', error);
-
-            // If it's still a username conflict, try one more time with timestamp suffix
-            if (error.code === 11000 && error.keyValue?.username) {
-                try {
-                    console.log(`🔧 Final attempt with timestamp suffix`);
-
-                    const timestampSuffix = Date.now().toString().slice(-4);
-                    const fallbackUsername = `${data.username}_${timestampSuffix}`;
-
-                    const identity = new Identity({
-                        tokenId: data.tokenId,
-                        username: fallbackUsername,
-                        primarySkill: 'Blockchain Developer',
-                        ownerAddress: data.owner.toLowerCase(),
-                        experience: 'beginner',
-                        reputationScore: 100,
-                        skillLevel: 1,
-                        achievementCount: 0,
-                        isVerified: true,
-                        nftBasePrice: 10,
-                        currentPrice: 10,
-                        profile: {
-                            bio: `Welcome ${data.username}! Your journey on SomniaID begins now.`,
-                            skills: [],
-                            achievements: [],
-                            goals: [],
-                            socialLinks: {},
-                            education: [],
-                            workExperience: []
-                        },
-                        profileViews: 0,
-                        followers: [],
-                        following: [],
-                        lastUpdate: Date.now(),
-                        txHash: data.txHash,
-                        createdAt: new Date(),
-                        lastMetadataUpdate: Date.now()
-                    });
-
-                    await identity.save();
-                    console.log(`✅ Created with fallback username: ${fallbackUsername}`);
-                } catch (finalError) {
-                    console.error('❌ Final creation attempt failed:', finalError);
-                }
-            }
+            console.error('❌ Error in handleIdentityCreated:', error);
         }
     }
+
+    // ========== NFT TRANSFER HANDLER (CRITICAL FOR PORTFOLIO) ==========
+    private async handleNFTTransfer(data: {
+        tokenId: number;
+        from: string;
+        to: string;
+        txHash: string;
+        blockNumber: number;
+        timestamp: Date;
+    }) {
+        try {
+            console.log(`🔄 Processing Transfer: Token #${data.tokenId} ${data.from} → ${data.to}`);
+
+            // Record transfer for portfolio tracking
+            const transfer = new NFTTransfer({
+                token_id: data.tokenId,
+                from_address: data.from,
+                to_address: data.to,
+                price: 0, // Will be updated by IdentityPurchased event
+                tx_hash: data.txHash,
+                block_number: data.blockNumber,
+                transfer_type: 'transfer',
+                timestamp: data.timestamp
+            });
+            await transfer.save();
+
+            // ✅ FIXED: NEVER change identity ownership here
+            // Identity ownership is only changed in the API routes when verified
+            // This prevents the confusion between identity vs NFT ownership
+
+            console.log(`✅ Transfer recorded: Token #${data.tokenId} (Portfolio investment tracked)`);
+
+        } catch (error) {
+            console.error('❌ Error handling NFT transfer:', error);
+        }
+    }
+
+    // ========== IDENTITY PURCHASE HANDLER ==========
     private async handleIdentityPurchased(data: {
         tokenId: number;
         buyer: string;
@@ -374,35 +425,21 @@ export class BlockchainSyncService {
         blockNumber: number;
     }) {
         try {
-            // 1. Record NFT transfer
-            const transfer = new NFTTransfer({
-                token_id: data.tokenId,
-                from_address: data.seller.toLowerCase(),
-                to_address: data.buyer.toLowerCase(),
-                price: data.price,
-                tx_hash: data.txHash,
-                block_number: data.blockNumber,
-                transfer_type: 'sale',
-                timestamp: new Date()
-            });
-            await transfer.save();
-
-            // 2. Update Identity ownership
-            await Identity.updateOne(
-                { tokenId: data.tokenId },
+            // Update transfer record with price
+            await NFTTransfer.updateOne(
+                { token_id: data.tokenId, tx_hash: data.txHash },
                 {
                     $set: {
-                        ownerAddress: data.buyer.toLowerCase(),
-                        lastUpdate: Date.now(),
-                        updatedAt: new Date()
+                        price: data.price,
+                        transfer_type: 'sale'
                     }
                 }
             );
 
-            console.log(`✅ Identity purchase processed: Token #${data.tokenId} → ${data.buyer}`);
+            console.log(`💰 Purchase recorded: Token #${data.tokenId} for ${data.price} ETH`);
 
         } catch (error) {
-            console.error('❌ Error handling identity purchase:', error);
+            console.error('❌ Error handling purchase:', error);
         }
     }
 
@@ -415,7 +452,6 @@ export class BlockchainSyncService {
         timestamp: Date;
     }) {
         try {
-            // 1. Record achievement history
             const achievement = new AchievementHistory({
                 token_id: data.tokenId,
                 title: data.title,
@@ -429,7 +465,6 @@ export class BlockchainSyncService {
             });
             await achievement.save();
 
-            // 2. Update Identity stats
             const identity = await Identity.findOne({ tokenId: data.tokenId });
             if (identity) {
                 identity.reputationScore += data.points;
@@ -439,9 +474,8 @@ export class BlockchainSyncService {
             }
 
             console.log(`🏆 Achievement processed: ${data.title} (+${data.points} points)`);
-
         } catch (error) {
-            console.error('❌ Error handling achievement unlock:', error);
+            console.error('❌ Error handling achievement:', error);
         }
     }
 
@@ -454,9 +488,8 @@ export class BlockchainSyncService {
         timestamp: Date;
     }) {
         try {
-            const changePercent = ((data.newPrice - data.oldPrice) / data.oldPrice) * 100;
+            const changePercent = data.oldPrice > 0 ? ((data.newPrice - data.oldPrice) / data.oldPrice) * 100 : 0;
 
-            // 1. Record price history
             const priceHistory = new PriceHistory({
                 token_id: data.tokenId,
                 old_price: data.oldPrice,
@@ -469,7 +502,6 @@ export class BlockchainSyncService {
             });
             await priceHistory.save();
 
-            // 2. Update Identity current price
             await Identity.updateOne(
                 { tokenId: data.tokenId },
                 {
@@ -481,8 +513,7 @@ export class BlockchainSyncService {
                 }
             );
 
-            console.log(`💰 Price update processed: Token #${data.tokenId} ${changePercent.toFixed(1)}%`);
-
+            console.log(`💰 Price update: Token #${data.tokenId} ${changePercent.toFixed(1)}%`);
         } catch (error) {
             console.error('❌ Error handling price update:', error);
         }
@@ -496,7 +527,6 @@ export class BlockchainSyncService {
         timestamp: Date;
     }) {
         try {
-            // 1. Update goal progress
             await GoalProgress.updateOne(
                 { token_id: data.tokenId, goal_index: data.goalIndex },
                 {
@@ -508,7 +538,6 @@ export class BlockchainSyncService {
                 }
             );
 
-            // 2. Update Identity reputation
             const identity = await Identity.findOne({ tokenId: data.tokenId });
             if (identity) {
                 identity.reputationScore += data.rewardPoints;
@@ -516,8 +545,7 @@ export class BlockchainSyncService {
                 await identity.save();
             }
 
-            console.log(`🎯 Goal completion processed: Token #${data.tokenId} (+${data.rewardPoints} points)`);
-
+            console.log(`🎯 Goal completed: Token #${data.tokenId} (+${data.rewardPoints} points)`);
         } catch (error) {
             console.error('❌ Error handling goal completion:', error);
         }
@@ -531,7 +559,6 @@ export class BlockchainSyncService {
         timestamp: Date;
     }) {
         try {
-            // 1. Update goal progress
             await GoalProgress.updateOne(
                 { token_id: data.tokenId, goal_index: data.goalIndex },
                 {
@@ -542,17 +569,15 @@ export class BlockchainSyncService {
                 }
             );
 
-            // 2. Apply price penalty (if applicable)
             const identity = await Identity.findOne({ tokenId: data.tokenId });
             if (identity && data.pricePenalty > 0) {
-                const penaltyAmount = (identity.currentPrice * data.pricePenalty) / 10000; // basis points
+                const penaltyAmount = (identity.currentPrice * data.pricePenalty) / 10000;
                 identity.currentPrice = Math.max(1, identity.currentPrice - penaltyAmount);
                 identity.lastUpdate = Date.now();
                 await identity.save();
             }
 
-            console.log(`❌ Goal failure processed: Token #${data.tokenId} (-${data.pricePenalty}bp)`);
-
+            console.log(`❌ Goal failed: Token #${data.tokenId} (-${data.pricePenalty}bp)`);
         } catch (error) {
             console.error('❌ Error handling goal failure:', error);
         }
@@ -576,14 +601,11 @@ export class BlockchainSyncService {
                 }
             );
 
-            console.log(`⭐ Reputation update processed: Token #${data.tokenId} → ${data.newScore}`);
-
+            console.log(`⭐ Reputation updated: Token #${data.tokenId} → ${data.newScore}`);
         } catch (error) {
             console.error('❌ Error handling reputation update:', error);
         }
     }
-
-    // ==================== EXISTING METHODS (Enhanced) ====================
 
     private async testConnection(): Promise<boolean> {
         if (!this.configValid || !this.provider || !this.contract) {
@@ -592,45 +614,51 @@ export class BlockchainSyncService {
         }
 
         try {
-            console.log('🔍 Testing enhanced blockchain connection...');
+            console.log('🔍 Testing blockchain connection...');
 
             const blockNumber = await this.provider.getBlockNumber();
-            console.log('✅ RPC connection successful. Latest block:', blockNumber);
+            console.log('✅ RPC connection successful. Block:', blockNumber);
 
             const name = await this.contract.name();
             const symbol = await this.contract.symbol();
-            console.log(`✅ Connected to contract: ${name} (${symbol})`);
+            console.log(`✅ Contract connected: ${name} (${symbol})`);
 
             const totalIdentities = await this.contract.getTotalIdentities();
-            console.log(`✅ Contract functionality verified. Total identities: ${totalIdentities}`);
+            console.log(`✅ Total identities: ${totalIdentities}`);
 
-            console.log('🎉 Enhanced connection tests passed!');
             return true;
-
         } catch (error) {
-            console.error('❌ Enhanced connection test failed:', error);
+            console.error('❌ Connection test failed:', error);
             return false;
         }
     }
 
-    // ==================== NEW: ENHANCED QUERY METHODS ====================
-
+    // ========== PORTFOLIO & QUERY METHODS ==========
     async getPortfolioData(address: string) {
         try {
-            const transfers = await NFTTransfer.find({
-                to_address: address.toLowerCase()
+            // Get user's actual identity (created by them)
+            const userIdentity = await Identity.findOne({
+                ownerAddress: address.toLowerCase(),
+                isOriginalOwner: true
+            });
+
+            // Get NFTs they own (bought from others)
+            const portfolioTransfers = await NFTTransfer.find({
+                to_address: address.toLowerCase(),
+                from_address: { $ne: address.toLowerCase() }
             }).sort({ timestamp: -1 });
 
-            const tokenIds = transfers.map(t => t.token_id);
-
-            const identities = await Identity.find({
-                tokenId: { $in: tokenIds }
+            // Get identity data for portfolio NFTs
+            const portfolioTokenIds = portfolioTransfers.map(t => t.token_id);
+            const portfolioIdentities = await Identity.find({
+                tokenId: { $in: portfolioTokenIds }
             }).lean();
 
             return {
-                transfers,
-                identities,
-                totalValue: transfers.reduce((sum, t) => sum + t.price, 0)
+                userIdentity, // Their real identity
+                portfolioNFTs: portfolioTransfers, // NFTs they bought
+                portfolioIdentities, // Identity data for those NFTs
+                totalPortfolioValue: portfolioTransfers.reduce((sum, t) => sum + t.price, 0)
             };
         } catch (error) {
             console.error('Error getting portfolio data:', error);
@@ -641,7 +669,6 @@ export class BlockchainSyncService {
     async getPriceHistory(tokenId: number, days: number = 30) {
         const cutoff = new Date();
         cutoff.setDate(cutoff.getDate() - days);
-
         return PriceHistory.find({
             token_id: tokenId,
             timestamp: { $gte: cutoff }
@@ -654,66 +681,46 @@ export class BlockchainSyncService {
         }).sort({ timestamp: -1 });
     }
 
-    // ==================== EXISTING METHODS (Keep as is) ====================
-
+    // ========== SYNC METHODS ==========
     async syncAllIdentities(): Promise<void> {
-        // Keep existing implementation...
-        console.log('🔄 Starting complete blockchain sync...');
+        console.log('🔄 Starting blockchain sync...');
 
         if (!this.checkServiceReady()) {
-            throw new Error('Blockchain sync service not ready. Check configuration.');
+            throw new Error('Service not ready');
         }
 
         try {
             const blockchainData = await this.getAllBlockchainIdentities();
-            console.log(`📊 Found ${blockchainData.length} identities on blockchain`);
-
-            if (blockchainData.length === 0) {
-                console.log('⚠️ No identities found on blockchain');
-                return;
-            }
+            console.log(`📊 Found ${blockchainData.length} blockchain identities`);
 
             const dbIdentities = await Identity.find({}).lean();
-            console.log(`📊 Found ${dbIdentities.length} identities in database`);
+            console.log(`📊 Found ${dbIdentities.length} database identities`);
 
-            const blockchainByAddress = new Map();
-            blockchainData.forEach(identity => {
-                blockchainByAddress.set(identity.ownerAddress.toLowerCase(), identity);
-            });
-
-            let fixed = 0;
-            let errors = 0;
-            let unchanged = 0;
+            let fixed = 0, errors = 0, unchanged = 0;
 
             for (const dbIdentity of dbIdentities) {
                 try {
-                    const blockchainIdentity = blockchainByAddress.get(dbIdentity.ownerAddress.toLowerCase());
+                    const blockchainMatch = blockchainData.find(
+                        b => b.ownerAddress.toLowerCase() === dbIdentity.ownerAddress.toLowerCase()
+                    );
 
-                    if (!blockchainIdentity) {
-                        continue;
-                    }
-
-                    if (dbIdentity.tokenId !== blockchainIdentity.tokenId) {
-                        const updateResult = await Identity.updateOne(
+                    if (blockchainMatch && dbIdentity.tokenId !== blockchainMatch.tokenId) {
+                        await Identity.updateOne(
                             { _id: dbIdentity._id },
                             {
                                 $set: {
-                                    tokenId: blockchainIdentity.tokenId,
-                                    reputationScore: blockchainIdentity.reputationScore,
-                                    skillLevel: blockchainIdentity.skillLevel,
-                                    achievementCount: blockchainIdentity.achievementCount,
-                                    lastUpdate: blockchainIdentity.lastUpdate,
-                                    primarySkill: blockchainIdentity.primarySkill,
-                                    isVerified: blockchainIdentity.isVerified,
-                                    lastMetadataUpdate: Date.now(),
-                                    updatedAt: new Date()
+                                    tokenId: blockchainMatch.tokenId,
+                                    reputationScore: blockchainMatch.reputationScore,
+                                    skillLevel: blockchainMatch.skillLevel,
+                                    achievementCount: blockchainMatch.achievementCount,
+                                    lastUpdate: blockchainMatch.lastUpdate,
+                                    primarySkill: blockchainMatch.primarySkill,
+                                    isVerified: blockchainMatch.isVerified,
+                                    lastMetadataUpdate: Date.now()
                                 }
                             }
                         );
-
-                        if (updateResult.modifiedCount > 0) {
-                            fixed++;
-                        }
+                        fixed++;
                     } else {
                         unchanged++;
                     }
@@ -722,14 +729,9 @@ export class BlockchainSyncService {
                 }
             }
 
-            console.log('\n=====================================');
-            console.log('📊 SYNC SUMMARY:');
-            console.log(`   ✅ Fixed: ${fixed} identities`);
-            console.log(`   ✅ Already correct: ${unchanged} identities`);
-            console.log(`   ❌ Errors: ${errors} identities`);
-
+            console.log(`📊 SYNC COMPLETE: Fixed ${fixed}, Unchanged ${unchanged}, Errors ${errors}`);
         } catch (error: any) {
-            console.error('❌ Blockchain sync failed:', error);
+            console.error('❌ Sync failed:', error);
             throw error;
         }
     }
@@ -739,22 +741,19 @@ export class BlockchainSyncService {
     }
 
     private async getAllBlockchainIdentities(): Promise<any[]> {
-        if (!this.checkServiceReady() || !this.contract) {
-            throw new Error('Service not ready for blockchain queries');
-        }
+        if (!this.contract) throw new Error('Contract not available');
 
         const identities = [];
-        let tokenId = 1;
+        let tokenId = 0;
         let consecutiveFailures = 0;
-        const maxConsecutiveFailures = 20;
 
-        while (consecutiveFailures < maxConsecutiveFailures) {
+        while (consecutiveFailures < 20) {
             try {
                 const owner = await this.contract.ownerOf(tokenId);
                 const identityData = await this.contract.getIdentity(tokenId);
 
-                const identity = {
-                    tokenId: tokenId,
+                identities.push({
+                    tokenId,
                     ownerAddress: owner.toLowerCase(),
                     reputationScore: Number(identityData.reputationScore),
                     skillLevel: Number(identityData.skillLevel),
@@ -762,15 +761,12 @@ export class BlockchainSyncService {
                     lastUpdate: Number(identityData.lastUpdate),
                     primarySkill: identityData.primarySkill,
                     isVerified: identityData.isVerified
-                };
+                });
 
-                identities.push(identity);
                 consecutiveFailures = 0;
-
-            } catch (error: any) {
+            } catch (error) {
                 consecutiveFailures++;
             }
-
             tokenId++;
         }
 
@@ -783,9 +779,13 @@ export class BlockchainSyncService {
                 return { correct: false, error: 'Service not ready' };
             }
 
-            const dbIdentity = await Identity.findOne({ ownerAddress: address.toLowerCase() });
+            const dbIdentity = await Identity.findOne({
+                ownerAddress: address.toLowerCase(),
+                isOriginalOwner: true
+            });
+
             if (!dbIdentity) {
-                return { correct: false, error: 'No database identity found' };
+                return { correct: false, error: 'No identity found' };
             }
 
             const hasIdentity = await this.contract.hasIdentity(address);
@@ -793,15 +793,14 @@ export class BlockchainSyncService {
                 return {
                     correct: false,
                     dbTokenId: dbIdentity.tokenId,
-                    error: 'No blockchain identity found'
+                    error: 'No blockchain identity'
                 };
             }
 
             const blockchainTokenId = Number(await this.contract.getTokenIdByAddress(address));
-            const isCorrect = dbIdentity.tokenId === blockchainTokenId;
 
             return {
-                correct: isCorrect,
+                correct: dbIdentity.tokenId === blockchainTokenId,
                 dbTokenId: dbIdentity.tokenId,
                 blockchainTokenId
             };
@@ -822,7 +821,7 @@ export class BlockchainSyncService {
             const identityData = await this.contract.getIdentity(blockchainTokenId);
 
             const result = await Identity.updateOne(
-                { ownerAddress: address.toLowerCase() },
+                { ownerAddress: address.toLowerCase(), isOriginalOwner: true },
                 {
                     $set: {
                         tokenId: blockchainTokenId,
@@ -832,16 +831,14 @@ export class BlockchainSyncService {
                         lastUpdate: Number(identityData.lastUpdate),
                         primarySkill: identityData.primarySkill,
                         isVerified: identityData.isVerified,
-                        lastMetadataUpdate: Date.now(),
-                        updatedAt: new Date()
+                        lastMetadataUpdate: Date.now()
                     }
                 }
             );
 
-            return result.modifiedCount > 0 || result.matchedCount > 0;
-
+            return result.modifiedCount > 0;
         } catch (error: any) {
-            console.error(`❌ Error fixing token ID for ${address}:`, error);
+            console.error(`Error fixing token ID for ${address}:`, error);
             return false;
         }
     }
@@ -857,8 +854,10 @@ export class BlockchainSyncService {
             const owner = await this.contract.ownerOf(tokenId);
             const identityData = await this.contract.getIdentity(tokenId);
 
-            // Check if we have this identity in database with username
-            const dbIdentity = await Identity.findOne({ tokenId });
+            const dbIdentity = await Identity.findOne({
+                tokenId,
+                isOriginalOwner: true
+            });
 
             return {
                 tokenId,
@@ -869,13 +868,12 @@ export class BlockchainSyncService {
                 lastUpdate: Number(identityData.lastUpdate),
                 primarySkill: identityData.primarySkill,
                 isVerified: identityData.isVerified,
-                username: dbIdentity?.username || `Identity #${tokenId}`, // ⭐ Use DB username if available
-                source: 'blockchain',
-                synced: true
+                username: dbIdentity?.username || `Identity #${tokenId}`,
+                source: 'blockchain'
             };
 
         } catch (error: any) {
-            console.error('❌ Error getting blockchain identity:', error);
+            console.error('Error getting blockchain identity:', error);
             return null;
         }
     }
@@ -894,33 +892,32 @@ export class BlockchainSyncService {
     }
 
     async reinitialize() {
-        console.log('🔄 Force reinitializing Enhanced Blockchain Sync Service...');
+        console.log('🔄 Reinitializing service...');
+
+        this.eventListeners.forEach((listener, event) => {
+            if (this.contract) {
+                this.contract.off(event, listener);
+            }
+        });
+        this.eventListeners.clear();
 
         this.configValid = this.validateConfiguration();
         if (!this.configValid) return false;
 
         try {
-            // Stop existing listeners
-            this.eventListeners.forEach((listener, event) => {
-                if (this.contract) {
-                    this.contract.off(event, listener);
-                }
-            });
-            this.eventListeners.clear();
-
             this.provider = new ethers.JsonRpcProvider(RPC_URL);
             this.contract = new ethers.Contract(CONTRACT_ADDRESS, CONTRACT_ABI, this.provider);
 
-            const connectionSuccess = await this.testConnection();
-            this.isInitialized = connectionSuccess;
+            const success = await this.testConnection();
+            this.isInitialized = success;
 
-            if (connectionSuccess) {
+            if (success) {
                 this.startEventListening();
             }
 
-            return connectionSuccess;
+            return success;
         } catch (error) {
-            console.error('❌ Reinitialization error:', error);
+            console.error('Reinitialization error:', error);
             return false;
         }
     }

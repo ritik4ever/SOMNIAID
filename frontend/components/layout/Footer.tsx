@@ -22,7 +22,7 @@ export function Footer() {
                         </p>
                         <div className="flex space-x-4">
                             <a
-                                href="https://github.com/somniaID"
+                                href="https://github.com/ritik4ever/SOMNIAID"
                                 target="_blank"
                                 rel="noopener noreferrer"
                                 className="p-2 bg-gray-800 rounded-lg hover:bg-gray-700 transition-colors"

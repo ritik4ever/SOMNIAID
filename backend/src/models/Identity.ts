@@ -49,6 +49,7 @@ export interface IIdentity extends Document {
     skillLevel: number;
     achievementCount: number;
     isVerified: boolean;
+    isOriginalOwner: boolean; // ADDED: Distinguishes identity creator from NFT buyer
 
     nftBasePrice: number;
     currentPrice: number;
@@ -94,8 +95,8 @@ export interface IIdentity extends Document {
 
     txHash?: string;
     lastUpdate: number;
-    lastMetadataUpdate?: number; // Add this field
-    lastKnownReputation?: number; // Add this field
+    lastMetadataUpdate?: number;
+    lastKnownReputation?: number;
     createdAt: Date;
     updatedAt: Date;
 }
@@ -159,6 +160,7 @@ const IdentitySchema: Schema = new Schema({
     skillLevel: { type: Number, default: 1 },
     achievementCount: { type: Number, default: 0 },
     isVerified: { type: Boolean, default: false },
+    isOriginalOwner: { type: Boolean, default: true }, // ADDED: True for identity creator
 
     nftBasePrice: { type: Number, default: 10 },
     currentPrice: { type: Number, default: 10 },

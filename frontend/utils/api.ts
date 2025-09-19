@@ -1,10 +1,7 @@
 import toast from 'react-hot-toast';
 
 // Use production API URL in production
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL ||
-    (process.env.NODE_ENV === 'production'
-        ? 'https://somniaid.onrender.com/api'
-        : 'http://localhost:5000/api');
+export const API_BASE_URL = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:5000';
 
 // Add proper interfaces
 interface LeaderboardResponse {
@@ -245,6 +242,47 @@ class ApiClient {
         return this.request(`/achievements/leaderboard?page=${page}&limit=${limit}`);
     }
 
+    // Marketplace endpoints
+    async getMarketplaceListings(params?: { page?: number; limit?: number; sortBy?: string }) {
+        const query = new URLSearchParams(params as any).toString();
+        return this.request(`/marketplace/listings?${query}`);
+    }
+
+    async listNFT(tokenId: number, price: number, sellerAddress: string) {
+        return this.request('/marketplace/list', {
+            method: 'POST',
+            body: JSON.stringify({ tokenId, price, sellerAddress }),
+        });
+    }
+
+    async getMarketplaceListing(tokenId: number) {
+        return this.request(`/marketplace/listing/${tokenId}`);
+    }
+
+    async unlistNFT(tokenId: number, sellerAddress: string) {
+        return this.request('/marketplace/unlist', {
+            method: 'POST',
+            body: JSON.stringify({ tokenId, sellerAddress }),
+        });
+    }
+
+    // NFT endpoints
+    async buyNFT(tokenId: number, buyerAddress: string, txHash: string) {
+        return this.request(`/nft/buy/${tokenId}`, {
+            method: 'POST',
+            body: JSON.stringify({ buyerAddress, txHash }),
+        });
+    }
+
+    async getNFT(tokenId: number) {
+        return this.request(`/nft/${tokenId}`);
+    }
+
+    async getAllNFTs(params?: { page?: number; limit?: number; skill?: string }) {
+        const query = new URLSearchParams(params as any).toString();
+        return this.request(`/nft?${query}`);
+    }
+
     // Health check endpoints
     async testConnection() {
         try {
@@ -281,3 +319,24 @@ class ApiClient {
 }
 
 export const api = new ApiClient(API_BASE_URL);
+
+// Export separate API objects for backward compatibility
+export const marketplaceAPI = {
+    getListings: (params?: { page?: number; limit?: number; sortBy?: string }) =>
+        api.getMarketplaceListings(params),
+    listNFT: (tokenId: number, price: number, sellerAddress: string) =>
+        api.listNFT(tokenId, price, sellerAddress),
+    getListing: (tokenId: number) =>
+        api.getMarketplaceListing(tokenId),
+    unlistNFT: (tokenId: number, sellerAddress: string) =>
+        api.unlistNFT(tokenId, sellerAddress)
+};
+
+export const nftAPI = {
+    buyNFT: (tokenId: number, buyerAddress: string, txHash: string) =>
+        api.buyNFT(tokenId, buyerAddress, txHash),
+    getNFT: (tokenId: number) =>
+        api.getNFT(tokenId),
+    getAllNFTs: (params?: { page?: number; limit?: number; skill?: string }) =>
+        api.getAllNFTs(params)
+};
