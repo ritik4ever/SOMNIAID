@@ -60,7 +60,7 @@ export async function GET(
         // Get username from backend
         let username = `Identity #${tokenId}`;
         try {
-            const backendResponse = await fetch(`http://localhost:5000/api/identity/${tokenId}`)
+            const backendResponse = await fetch(`https://somniaid.onrender.com/api/identity/${tokenId}`)
             if (backendResponse.ok) {
                 const backendData = await backendResponse.json()
                 if (backendData.success && backendData.identity?.username) {

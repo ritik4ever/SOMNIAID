@@ -78,7 +78,7 @@ export async function GET(request: NextRequest) {
                         // Try to get username from backend
                         let username = `Identity #${tokenId}`;
                         try {
-                            const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000';
+                            const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || 'https://somniaid.onrender.com';
                             const backendResponse = await fetch(`${backendUrl}/api/identity/${tokenId}`, {
                                 headers: { 'Content-Type': 'application/json' }
                             });
