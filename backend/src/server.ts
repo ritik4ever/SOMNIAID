@@ -31,7 +31,7 @@ const server = createServer(app);
 const allowedOrigins = [
     "http://localhost:3000",
     "http://localhost:3001",
-    "https://somniaid.vercel.app",
+    "https://somniaid.vercel.app/",
     "https://somniaid-git-main-your-username.vercel.app",
     /^https:\/\/somniaid-.*\.vercel\.app$/,
 ];
