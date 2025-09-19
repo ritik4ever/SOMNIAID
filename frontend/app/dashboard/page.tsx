@@ -29,7 +29,7 @@ import {
     type LegacyGasConfig
 } from '@/utils/gasEstimation'
 
-const API_BASE_URL = 'http://localhost:5000'
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000'
 
 interface EnhancedIdentity {
     tokenId: number
